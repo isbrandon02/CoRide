@@ -67,3 +67,27 @@ class ProfileOut(BaseModel):
     work_schedule: WorkScheduleOut
     vehicle: VehicleOut
     onboarding_completed: bool
+
+
+class MatchItemOut(BaseModel):
+    """Carpool match for current user. Scores are 0–100."""
+
+    id: int
+    email: str
+    name: str
+    match_score: float
+    route_overlap: float
+    time_score: float
+    home_address: str = ""
+    office_address: str = ""
+    commute_route: str = ""
+    work_schedule: WorkScheduleOut = Field(default_factory=WorkScheduleOut)
+    vehicle: VehicleOut = Field(default_factory=VehicleOut)
+
+
+class MatchesResponse(BaseModel):
+    matches: list[MatchItemOut]
+    weights: dict[str, float] = Field(
+        default_factory=lambda: {"route_overlap": 0.6, "time_proximity": 0.4},
+        description="Score = route_overlap * w1 + time_score * w2",
+    )
