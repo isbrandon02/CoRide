@@ -522,8 +522,8 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
                     </View>
                   ))}
                 </View>
-                <Pressable style={s.primary} onPress={confirm}>
-                  <Text style={s.primaryText}>Confirm request</Text>
+                <Pressable style={s.sheetConfirmBtn} onPress={confirm}>
+                  <Text style={s.sheetConfirmText}>Confirm</Text>
                 </Pressable>
                 <Pressable style={{ alignItems: 'center', paddingVertical: 14 }} onPress={() => setSheet(null)}>
                   <Text style={s.sub}>Cancel</Text>
@@ -723,6 +723,22 @@ const s = StyleSheet.create({
     paddingVertical: 14,
   },
   primaryText: { color: '#021b14', fontSize: 14, fontWeight: '800' },
+  /** Modal confirm: do not use flex:1 from primary — it stretches the hit area and can hide label */
+  sheetConfirmBtn: {
+    marginTop: 18,
+    backgroundColor: C.brand,
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'stretch',
+  },
+  sheetConfirmText: {
+    color: '#000000',
+    fontSize: 16,
+    fontWeight: '700',
+  },
   impactHero: {
     marginHorizontal: 16,
     marginTop: 14,
