@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +10,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
+import { getMatches } from '../src/auth';
 import ProfileSettingsScreen from './ProfileSettingsScreen';
 
 const bg = '#0B0B0C';
@@ -23,14 +25,43 @@ const blue = '#60A5FA';
 const orange = '#FB923C';
 const purple = '#A855F7';
 
-const TABS = [
+const TAB_DEF = [
   { key: 'home', label: 'Home', icon: 'home' },
-  { key: 'find', label: 'Find', icon: 'search', badge: 3 },
+  { key: 'find', label: 'Find', icon: 'search', badgeKey: 'find' },
   { key: 'rides', label: 'Rides', icon: 'calendar-outline' },
   { key: 'chat', label: 'Chat', icon: 'chatbubble-outline', badge: 2 },
   { key: 'impact', label: 'Impact', icon: 'wallet-outline' },
   { key: 'profile', label: 'Profile', icon: 'person-outline' },
 ];
+
+const AVATAR_PALETTE = [tealDark, orange, purple, blue, green];
+
+function initialsFromName(name) {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return (parts[0] || '?').slice(0, 2).toUpperCase();
+}
+
+function shortAddr(s) {
+  if (!s) return '';
+  const first = s.split(',')[0];
+  return first.length > 32 ? `${first.slice(0, 30)}…` : first;
+}
+
+function matchDetailLine(m) {
+  const start = m.work_schedule?.start_time;
+  const bits = [];
+  if (start) bits.push(start);
+  bits.push(`${Math.round(m.match_score)}% match`);
+  bits.push(`route ${Math.round(m.route_overlap)}%`);
+  if (m.office_address) bits.push(shortAddr(m.office_address));
+  return bits.join(' · ');
+}
 
 function greetingLine() {
   const h = new Date().getHours();
@@ -47,8 +78,47 @@ export default function HomeScreen({
 }) {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState('home');
+  const [matches, setMatches] = useState([]);
+  const [matchesLoading, setMatchesLoading] = useState(true);
+  const [matchesError, setMatchesError] = useState('');
 
   const greeting = greetingLine();
+
+  useEffect(() => {
+    if (!accessToken) {
+      setMatches([]);
+      setMatchesLoading(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setMatchesError('');
+      setMatchesLoading(true);
+      try {
+        const data = await getMatches(accessToken);
+        if (!cancelled) {
+          setMatches(Array.isArray(data.matches) ? data.matches : []);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setMatchesError(e instanceof Error ? e.message : 'Could not load matches');
+          setMatches([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setMatchesLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
+
+  const topMatch = matches[0];
+  const topThree = matches.slice(0, 3);
+  const findBadge = matches.length > 0 ? String(Math.min(matches.length, 9)) : null;
+  const statusCount = matches.length;
 
   if (tab === 'profile') {
     return (
@@ -59,7 +129,50 @@ export default function HomeScreen({
           onLogout={onLogout}
           scrollBottomPadding={100 + insets.bottom}
         />
-        <BottomBar tab={tab} onChange={setTab} bottomInset={insets.bottom} />
+        <BottomBar tab={tab} onChange={setTab} bottomInset={insets.bottom} findBadge={findBadge} />
+      </View>
+    );
+  }
+
+  if (tab === 'find') {
+    return (
+      <View style={styles.root}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.findHead}>Find coworkers</Text>
+          <Text style={styles.findSub}>Ranked by route overlap (60%) and schedule fit (40%)</Text>
+          {matchesLoading ? (
+            <ActivityIndicator color={teal} style={{ marginTop: 24 }} />
+          ) : matchesError ? (
+            <Text style={styles.errorBanner}>{matchesError}</Text>
+          ) : matches.length === 0 ? (
+            <Text style={styles.findEmpty}>No matches yet. Finish your profile or check back later.</Text>
+          ) : (
+            <View style={styles.rankList}>
+              {matches.map((m, i) => (
+                <View
+                  key={m.id}
+                  style={[styles.rankRow, i > 0 && styles.rankRowBorder]}
+                >
+                  <Text style={styles.rankNum}>{i + 1}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.rankName}>{m.name}</Text>
+                    <Text style={styles.rankMeta}>{matchDetailLine(m)}</Text>
+                    <View style={styles.scoreRow}>
+                      <Text style={styles.scoreChip}>Score {Math.round(m.match_score)}%</Text>
+                      <Text style={styles.scoreMuted}>Route {Math.round(m.route_overlap)}%</Text>
+                      <Text style={styles.scoreMuted}>Time {Math.round(m.time_score)}%</Text>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </ScrollView>
+        <BottomBar tab={tab} onChange={setTab} bottomInset={insets.bottom} findBadge={findBadge} />
       </View>
     );
   }
@@ -69,11 +182,11 @@ export default function HomeScreen({
       <View style={styles.root}>
         <View style={styles.placeholder}>
           <Text style={styles.placeholderTitle}>
-            {TABS.find((t) => t.key === tab)?.label ?? 'Coming soon'}
+            {TAB_DEF.find((t) => t.key === tab)?.label ?? 'Coming soon'}
           </Text>
           <Text style={styles.placeholderBody}>This section is not built yet.</Text>
         </View>
-        <BottomBar tab={tab} onChange={setTab} bottomInset={insets.bottom} />
+        <BottomBar tab={tab} onChange={setTab} bottomInset={insets.bottom} findBadge={findBadge} />
       </View>
     );
   }
@@ -93,26 +206,44 @@ export default function HomeScreen({
             <Text style={styles.userName}>{userName}</Text>
             <View style={styles.statusRow}>
               <View style={styles.statusDot} />
-              <Text style={styles.statusText}>3 coworkers driving your route today.</Text>
+              <Text style={styles.statusText}>
+                {matchesLoading
+                  ? 'Loading route matches…'
+                  : statusCount === 0
+                    ? 'No coworker matches yet — add commute details in Profile.'
+                    : `${statusCount} coworker${statusCount === 1 ? '' : 's'} match your route`}
+              </Text>
             </View>
           </View>
         </View>
 
         <View style={styles.featured}>
-          <Text style={styles.featuredEyebrow}>TOMORROW MORNING</Text>
+          <Text style={styles.featuredEyebrow}>TOP MATCH</Text>
           <View style={styles.featuredRow}>
             <View style={styles.featuredLeft}>
-              <Text style={styles.featuredTitle}>Riding with Alex Chen</Text>
-              <Text style={styles.featuredMeta}>8:30 AM • Pickup on Oak St • 4 riders</Text>
+              <Text style={styles.featuredTitle}>
+                {topMatch ? `Ride with ${topMatch.name}` : 'Find your best carpool'}
+              </Text>
+              <Text style={styles.featuredMeta} numberOfLines={3}>
+                {topMatch
+                  ? `${matchDetailLine(topMatch)}`
+                  : matchesError || 'Complete your home, office, and schedule to see ranked matches.'}
+              </Text>
               <View style={styles.pillRow}>
                 <View style={styles.pill}>
-                  <Text style={styles.pillText}>✓ Confirmed</Text>
+                  <Text style={styles.pillText}>
+                    {topMatch ? `${Math.round(topMatch.match_score)}% match` : '—'}
+                  </Text>
                 </View>
                 <View style={styles.pill}>
-                  <Text style={styles.pillText}>$3.40 your share</Text>
+                  <Text style={styles.pillText}>
+                    {topMatch ? `Route ${Math.round(topMatch.route_overlap)}%` : 'Route'}
+                  </Text>
                 </View>
                 <View style={styles.pill}>
-                  <Text style={styles.pillText}>~26 min</Text>
+                  <Text style={styles.pillText}>
+                    {topMatch ? `Time ${Math.round(topMatch.time_score)}%` : 'Time'}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -137,32 +268,31 @@ export default function HomeScreen({
           </View>
         </View>
 
-        <Text style={styles.sectionEyebrow}>COWORKERS DRIVING TODAY</Text>
-        <View style={styles.listCard}>
-          <DriverRow
-            initials="AC"
-            color={tealDark}
-            name="Alex Chen"
-            detail="8:30 AM • 2 seats • Oak St • +4 min detour"
-            action={{ type: 'join' }}
-          />
-          <View style={styles.divider} />
-          <DriverRow
-            initials="MP"
-            color={orange}
-            name="Maya Patel"
-            detail="9:00 AM • 1 seat • Maple Ave • +7 min"
-            action={{ type: 'badge', text: '1 left' }}
-          />
-          <View style={styles.divider} />
-          <DriverRow
-            initials="DK"
-            color={purple}
-            name="Dan Kim"
-            detail="8:15 AM • 3 seats • Elm Blvd • +2 min"
-            action={{ type: 'join' }}
-          />
-        </View>
+        <Text style={styles.sectionEyebrow}>TOP MATCHES</Text>
+        {matchesLoading ? (
+          <ActivityIndicator color={teal} style={{ paddingVertical: 24 }} />
+        ) : matchesError ? (
+          <Text style={styles.errorBanner}>{matchesError}</Text>
+        ) : (
+          <View style={styles.listCard}>
+            {topThree.length === 0 ? (
+              <Text style={styles.listEmpty}>No ranked matches. Open Find for details.</Text>
+            ) : (
+              topThree.map((m, idx) => (
+                <View key={m.id}>
+                  {idx > 0 ? <View style={styles.divider} /> : null}
+                  <DriverRow
+                    initials={initialsFromName(m.name)}
+                    color={AVATAR_PALETTE[idx % AVATAR_PALETTE.length]}
+                    name={m.name}
+                    detail={matchDetailLine(m)}
+                    action={{ type: 'join' }}
+                  />
+                </View>
+              ))
+            )}
+          </View>
+        )}
 
         <Text style={[styles.sectionEyebrow, { marginTop: 22 }]}>THIS WEEK</Text>
         <View style={styles.weekCard}>
@@ -182,7 +312,7 @@ export default function HomeScreen({
         </View>
       </ScrollView>
 
-      <BottomBar tab={tab} onChange={setTab} bottomInset={insets.bottom} />
+      <BottomBar tab={tab} onChange={setTab} bottomInset={insets.bottom} findBadge={findBadge} />
     </View>
   );
 }
@@ -237,11 +367,13 @@ function WeekRow({ day, main, tag, icon, iconColor, action }) {
   );
 }
 
-function BottomBar({ tab, onChange, bottomInset }) {
+function BottomBar({ tab, onChange, bottomInset, findBadge }) {
   return (
     <View style={[styles.tabBar, { paddingBottom: Math.max(bottomInset, 8) }]}>
-      {TABS.map((t) => {
+      {TAB_DEF.map((t) => {
         const active = tab === t.key;
+        const badge =
+          t.badgeKey === 'find' ? findBadge : t.badge != null ? String(t.badge) : null;
         return (
           <Pressable
             key={t.key}
@@ -254,9 +386,9 @@ function BottomBar({ tab, onChange, bottomInset }) {
                 size={22}
                 color={active ? teal : muted}
               />
-              {t.badge ? (
+              {badge ? (
                 <View style={styles.notifBadge}>
-                  <Text style={styles.notifBadgeText}>{t.badge}</Text>
+                  <Text style={styles.notifBadgeText}>{badge}</Text>
                 </View>
               ) : null}
             </View>
@@ -604,5 +736,81 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.85,
+  },
+  findHead: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#F5F5F7',
+    marginBottom: 6,
+  },
+  findSub: {
+    fontSize: 14,
+    color: muted,
+    marginBottom: 16,
+  },
+  findEmpty: {
+    fontSize: 15,
+    color: muted,
+    marginTop: 12,
+  },
+  errorBanner: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(185, 28, 28, 0.2)',
+    color: '#FCA5A5',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  rankList: {
+    marginTop: 8,
+  },
+  rankRow: {
+    flexDirection: 'row',
+    paddingVertical: 14,
+    gap: 12,
+  },
+  rankRowBorder: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: surface2,
+  },
+  rankNum: {
+    width: 28,
+    fontSize: 16,
+    fontWeight: '700',
+    color: teal,
+    paddingTop: 2,
+  },
+  rankName: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#F5F5F7',
+    marginBottom: 4,
+  },
+  rankMeta: {
+    fontSize: 13,
+    color: muted,
+    lineHeight: 18,
+  },
+  scoreRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  scoreChip: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: green,
+  },
+  scoreMuted: {
+    fontSize: 12,
+    color: label,
+  },
+  listEmpty: {
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    fontSize: 14,
+    color: muted,
   },
 });

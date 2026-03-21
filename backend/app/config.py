@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     # Relative paths are resolved to backend/data/ at runtime (see database.py).
     DATABASE_URL: str = "sqlite:///./data/coride.db"
 
+    # Insert demo users from data/demo_accounts.json on startup (idempotent). Set false in production.
+    SEED_DEMO_ACCOUNTS: bool = True
+
 
 @lru_cache
 def get_settings() -> Settings:
