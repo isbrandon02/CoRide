@@ -292,7 +292,7 @@ export default function ProfileSettingsScreen({
     return (
       <View style={styles.centered}>
         <Text style={styles.loadErrorText}>{loadError}</Text>
-        <Pressable
+        <AppPressable
           style={({ pressed }) => [styles.retryBtn, pressed && styles.pressed]}
           onPress={() => setRetryCount((count) => count + 1)}
         >
@@ -554,7 +554,7 @@ export default function ProfileSettingsScreen({
             </Pressable>
           )}
 
-          <Pressable style={({ pressed }) => [styles.signOutBtn, pressed && styles.pressed]} onPress={onLogout}>
+          <AppPressable variant="link" style={styles.signOutBtn} onPress={onLogout}>
             <Text style={styles.signOutOnlyLabel}>Sign out</Text>
           </AppPressable>
         </View>
