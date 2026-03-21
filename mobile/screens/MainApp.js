@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StatusBar } from 'expo-status-bar';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   ScrollView,
@@ -14,7 +15,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons';
 
 import AppPressable from '../components/AppPressable';
-import { API_BASE_URL } from '../src/config';
+import { createRideRequest, getImpact, getMatches, getRides } from '../src/auth';
 import { ChatList, ChatThread } from './ChatTab';
 import ProfileSettingsScreen from './ProfileSettingsScreen';
 import RidesTab from './RidesTab';
@@ -33,18 +34,14 @@ const C = {
   amber: '#f5a623',
 };
 
-const MATCHES = [
-  { id: 'alex', name: 'Alex Chen', role: 'Software Engineer', team: 'Engineering', initials: 'AC', score: 94, overlap: 94, detour: 4, cost: 3.4, co2: 5.8, time: '8:30 AM', area: 'Oak St area', eta: 26, seats: 2, color: C.brand },
-  { id: 'maya', name: 'Maya Patel', role: 'Product Designer', team: 'Product', initials: 'MP', score: 78, overlap: 78, detour: 7, cost: 2.8, co2: 4.1, time: '9:00 AM', area: 'Maple Ave', eta: 31, seats: 1, color: C.amber },
-  { id: 'dan', name: 'Dan Kim', role: 'Data Analyst', team: 'Finance', initials: 'DK', score: 71, overlap: 71, detour: 2, cost: 2.2, co2: 3.6, time: '8:15 AM', area: 'Elm Blvd', eta: 29, seats: 3, color: C.sky },
-];
-const IMPACT = { saved: 142, co2: 47, rides: 23, weekly: [{ d: 'Mon', v: 9 }, { d: 'Tue', v: 14 }, { d: 'Wed', v: 0 }, { d: 'Thu', v: 11 }, { d: 'Fri', v: 7 }, { d: 'Sat', v: 3 }, { d: 'Sun', v: 0 }] };
-const FILTERS = ['Morning', 'Has car', '<=10 min detour', '2+ seats'];
+const EMPTY_IMPACT = { saved: 0, co2: 0, rides: 0, weekly: [] };
+const MATCH_COLORS = [C.brand, C.amber, C.sky];
+const FILTERS = ['Morning', 'Afternoon', 'Evening'];
 
 const TAB_BAR_ITEMS = [
   { key: 'home', label: 'Home', iconOn: 'home', iconOff: 'home-outline' },
   { key: 'matches', label: 'Find', iconOn: 'search', iconOff: 'search-outline' },
-  { key: 'rides', label: 'Activity', iconOn: 'calendar', iconOff: 'calendar-outline' },
+  { key: 'rides', label: 'Rides', iconOn: 'calendar', iconOff: 'calendar-outline' },
   { key: 'chat', label: 'Chat', iconOn: 'chatbubbles', iconOff: 'chatbubbles-outline' },
   { key: 'profile', label: 'Profile', iconOn: 'person', iconOff: 'person-outline' },
 ];
@@ -80,33 +77,41 @@ function greetingLine() {
   return 'Good Evening';
 }
 
+function firstLineAddress(addr) {
+  if (!addr || typeof addr !== 'string') return '';
+  const line = addr.split(',')[0].trim();
+  return line.length > 36 ? `${line.slice(0, 34)}…` : line;
+}
+
 function normalizeMatch(x, i) {
-  const base = MATCHES[i % MATCHES.length];
-  const score = x.score ?? x.match_score ?? 0.8;
+  const displayName = x.name ?? x.full_name ?? 'Member';
+  const score = x.score ?? x.match_score ?? 0;
   const overlap = x.route_overlap ?? x.overlap ?? score;
+  const timeScoreRaw = x.time_score ?? 0;
   return {
-    id: String(x.id ?? base.id),
-    name: x.name ?? x.full_name ?? base.name,
-    role: x.role ?? base.role,
-    team: x.team ?? x.department ?? base.team,
+    id: String(x.id),
+    name: displayName,
+    email: typeof x.email === 'string' ? x.email : '',
     initials:
       x.initials ??
-      (x.name ?? x.full_name ?? base.name)
+      (displayName
         .split(' ')
         .map((p) => p[0])
+        .filter(Boolean)
         .slice(0, 2)
         .join('')
-        .toUpperCase(),
+        .toUpperCase() || '?'),
     score: Math.round(score <= 1 ? score * 100 : score),
     overlap: Math.round(overlap <= 1 ? overlap * 100 : overlap),
-    detour: Math.round(x.detour_minutes ?? x.detour ?? base.detour),
-    cost: Number(x.cost_share ?? x.cost ?? base.cost),
-    co2: Number(x.co2_saved_kg ?? x.co2 ?? base.co2),
-    time: x.depart_time ?? x.departure_time ?? base.time,
-    area: x.pickup_area ?? x.neighborhood ?? base.area,
-    eta: Math.round(x.eta_minutes ?? x.eta ?? base.eta),
-    seats: Math.round(x.seats_available ?? x.seats ?? base.seats),
-    color: base.color,
+    timeScore: Math.round(timeScoreRaw <= 1 ? timeScoreRaw * 100 : timeScoreRaw),
+    time:
+      x.depart_time ??
+      x.departure_time ??
+      (x.work_schedule && typeof x.work_schedule === 'object' && x.work_schedule.start_time
+        ? String(x.work_schedule.start_time)
+        : ''),
+    area: x.pickup_area ?? x.neighborhood ?? firstLineAddress(x.home_address),
+    color: MATCH_COLORS[i % MATCH_COLORS.length],
   };
 }
 
@@ -116,71 +121,96 @@ function normalizeMatch(x, i) {
 function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState('home');
-  const [matches, setMatches] = useState(MATCHES);
-  const [impact, setImpact] = useState(IMPACT);
+  const [matches, setMatches] = useState([]);
+  const [impact, setImpact] = useState(EMPTY_IMPACT);
   const [loadingMatches, setLoadingMatches] = useState(true);
   const [loadingImpact, setLoadingImpact] = useState(true);
   const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState(['Morning']);
   const [sheet, setSheet] = useState(null);
-  const [requested, setRequested] = useState([]);
-  /** chat: inbox vs thread (demo) */
+  /** Driver user ids (string) with a pending request from you */
+  const [pendingDriverIds, setPendingDriverIds] = useState([]);
+  const [ridesRefreshKey, setRidesRefreshKey] = useState(0);
+  const [confirmLoading, setConfirmLoading] = useState(false);
   const [chatSub, setChatSub] = useState('list');
   const [chatConvId, setChatConvId] = useState('morning');
+  /** set when opening a thread from the inbox */
+  const [chatThread, setChatThread] = useState(null);
   /** When set, Find tab scrolls to this match and highlights it (e.g. from Home). */
   const [findFocusId, setFindFocusId] = useState(null);
-
-  const apiBase = API_BASE_URL;
+  const [filters, setFilters] = useState([]);
 
   useEffect(() => {
     let live = true;
-    fetch(`${apiBase}/matches`)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d) => {
-        const list = Array.isArray(d) ? d : d.matches;
-        if (live && Array.isArray(list) && list.length) setMatches(list.map(normalizeMatch));
-      })
-      .catch(() => null)
-      .finally(() => live && setLoadingMatches(false));
-    fetch(`${apiBase}/impact`)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d) => {
-        if (live)
-          setImpact({
-            saved: Number(d.total_saved ?? d.saved ?? IMPACT.saved),
-            co2: Number(d.total_co2_kg ?? d.co2_saved ?? IMPACT.co2),
-            rides: Number(d.rides_shared ?? d.total_rides ?? IMPACT.rides),
-            weekly:
-              Array.isArray(d.weekly) && d.weekly.length
-                ? d.weekly.map((x) => ({ d: x.day ?? x.d, v: x.value ?? x.v }))
-                : IMPACT.weekly,
-          });
-      })
-      .catch(() => null)
-      .finally(() => live && setLoadingImpact(false));
+    if (!accessToken) {
+      setLoadingMatches(false);
+      return () => {
+        live = false;
+      };
+    }
+    (async () => {
+      try {
+        const [matchData, ridesData] = await Promise.all([
+          getMatches(accessToken),
+          getRides(accessToken).catch(() => ({ rides: [] })),
+        ]);
+        if (!live) return;
+        const list = matchData.matches ?? [];
+        setMatches(Array.isArray(list) ? list.map(normalizeMatch) : []);
+        const pending = (ridesData.rides ?? [])
+          .filter((r) => r.role === 'requester' && r.status === 'pending')
+          .map((r) => String(r.other_user.id));
+        setPendingDriverIds(pending);
+      } catch {
+        setMatches([]);
+      } finally {
+        if (live) setLoadingMatches(false);
+      }
+    })();
     return () => {
       live = false;
     };
-  }, [apiBase]);
+  }, [accessToken, ridesRefreshKey]);
 
-  const shown = useMemo(
-    () =>
-      matches.filter((m) => {
-        const q = search.trim().toLowerCase();
-        const passQ = !q || [m.name, m.team, m.area].some((v) => v.toLowerCase().includes(q));
-        const passF = filters.every((f) =>
-          f === 'Morning'
-            ? /AM/i.test(m.time)
-            : f === '<=10 min detour'
-              ? m.detour <= 10
-              : f === '2+ seats'
-                ? m.seats >= 2
-                : true,
-        );
-        return passQ && passF;
-      }),
-    [matches, search, filters],
-  );
+  useEffect(() => {
+    let live = true;
+    if (!accessToken) {
+      setLoadingImpact(false);
+      return () => {
+        live = false;
+      };
+    }
+    setLoadingImpact(true);
+    getImpact(accessToken)
+      .then((d) => {
+        if (!live) return;
+        setImpact({
+          saved: Number(d.total_saved ?? d.saved ?? 0),
+          co2: Number(d.total_co2_kg ?? d.co2_saved ?? 0),
+          rides: Number(d.rides_shared ?? d.total_rides ?? 0),
+          weekly:
+            Array.isArray(d.weekly) && d.weekly.length
+              ? d.weekly.map((x) => ({ d: x.day ?? x.d, v: x.value ?? x.v }))
+              : [],
+        });
+      })
+      .catch(() => {
+        if (live) setImpact(EMPTY_IMPACT);
+      })
+      .finally(() => {
+        if (live) setLoadingImpact(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [accessToken, ridesRefreshKey]);
+
+  const shown = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return matches;
+    return matches.filter((m) =>
+      [m.name, m.email, m.area].some((v) => String(v || '').toLowerCase().includes(q)),
+    );
+  }, [matches, search]);
 
   const displayedMatches = useMemo(() => {
     if (!findFocusId) return shown;
@@ -196,24 +226,32 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
   }, [tab, findFocusId]);
 
   const top = shown[0] ?? matches[0];
-  const commute = requested.length ? matches.find((m) => m.id === requested[0]) ?? top : top;
-  const week = [
-    ['MON', 'Solo drive', 'Solo'],
-    ['TUE', 'Alex - 8:30 AM', 'Confirmed'],
-    ['WED', 'WFH', 'Remote'],
-    ['THU', "You're driving - 2 riders", 'Driver'],
-    ['FRI', 'No match yet', 'Find'],
-  ];
+  const commute = pendingDriverIds.length ? matches.find((m) => pendingDriverIds.includes(m.id)) ?? top : top;
 
   const toggleFilter = useCallback(
     (f) => setFilters((cur) => (cur.includes(f) ? cur.filter((x) => x !== f) : [...cur, f])),
     [],
   );
-  const confirm = () => {
-    if (!sheet) return;
-    setRequested((cur) => (cur.includes(sheet.id) ? cur : [sheet.id, ...cur]));
-    setSheet(null);
-    setTab('home');
+
+  const confirm = async () => {
+    if (!sheet || !accessToken) return;
+    const driverId = Number(sheet.id);
+    if (!Number.isFinite(driverId)) {
+      Alert.alert('Request failed', 'Invalid match.');
+      return;
+    }
+    setConfirmLoading(true);
+    try {
+      await createRideRequest(accessToken, { driver_id: driverId });
+      setPendingDriverIds((cur) => (cur.includes(sheet.id) ? cur : [sheet.id, ...cur]));
+      setRidesRefreshKey((k) => k + 1);
+      setSheet(null);
+      setTab('home');
+    } catch (e) {
+      Alert.alert('Request failed', e instanceof Error ? e.message : String(e));
+    } finally {
+      setConfirmLoading(false);
+    }
   };
 
   const name = displayName || 'there';
@@ -222,9 +260,13 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
   const Home = () => (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.pad}>
       <View style={s.hero}>
-        <Text style={s.heroHeadline}>{`${greet},`}</Text>
-        <Text style={s.heroHeadline}>{name}</Text>
-        <Text style={s.sub}>{matches.slice(0, 3).length} coworkers are driving your route today</Text>
+        <Text style={s.smallMuted}>{greet}</Text>
+        <Text style={s.title}>{name}</Text>
+        <Text style={s.sub}>
+          {matches.length === 0
+            ? 'No route matches yet — open Find when coworkers are onboarded'
+            : `${Math.min(matches.length, 3)} coworker${matches.length === 1 ? '' : 's'} on your route`}
+        </Text>
       </View>
       <AppPressable
         variant="solid"
@@ -232,31 +274,48 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
         onPress={() => setTab('matches')}
         android_ripple={{ color: 'rgba(0,0,0,0.14)' }}
       >
-        <Text style={s.alertOver}>{requested.length ? 'Ride requested' : "Today's commute"}</Text>
-          <Text style={s.alertTitle}>
-            {commute ? `${requested.length ? 'Waiting on' : 'Best match:'} ${commute.name}` : 'No ride lined up yet'}
-          </Text>
-          <Text style={s.alertSub}>
-            {commute
-              ? `${commute.time} - ${commute.area} - ${commute.seats} seats open`
-              : 'Open Find to request tomorrow morning'}
-          </Text>
-          <View style={s.rowWrap}>
-            <View style={s.pill}>
-              <Text style={s.pillText}>{requested.length ? 'Pending confirmation' : `${commute?.score ?? 0}% match`}</Text>
-            </View>
-            <View style={s.pill}>
-              <Text style={s.pillText}>${(commute?.cost ?? 0).toFixed(2)} share</Text>
-            </View>
-            <View style={s.pill}>
-              <Text style={s.pillText}>{commute?.eta ?? 0} min est.</Text>
-            </View>
+        <Text style={s.alertOver}>{pendingDriverIds.length ? 'Ride requested' : "Today's commute"}</Text>
+        <Text style={s.alertTitle}>
+          {commute ? `${pendingDriverIds.length ? 'Waiting on' : 'Best match:'} ${commute.name}` : 'No ride lined up yet'}
+        </Text>
+        <Text style={s.alertSub}>
+          {commute
+            ? [commute.time, commute.area].filter(Boolean).join(' · ') || 'Carpool match from your profile'
+            : 'Open Find to request a ride'}
+        </Text>
+        <View style={s.rowWrap}>
+          <View style={s.pill}>
+            <Text style={s.pillText}>{pendingDriverIds.length ? 'Pending confirmation' : `${commute?.score ?? 0}% match`}</Text>
           </View>
+          {commute ? (
+            <View style={s.pill}>
+              <Text style={s.pillText}>Route {commute.overlap}%</Text>
+            </View>
+          ) : null}
+        </View>
       </AppPressable>
-
-        <Text style={s.section}>Coworkers Driving Today</Text>
+      <View style={s.stats}>
+        <View style={s.stat}>
+          <Text style={[s.statNum, { color: C.brand }]}>${impact.saved}</Text>
+          <Text style={s.statKey}>Saved</Text>
+        </View>
+        <View style={s.stat}>
+          <Text style={[s.statNum, { color: C.sky }]}>{impact.co2}kg</Text>
+          <Text style={s.statKey}>CO2 less</Text>
+        </View>
+        <View style={s.stat}>
+          <Text style={s.statNum}>{impact.rides}</Text>
+          <Text style={s.statKey}>Rides</Text>
+        </View>
+      </View>
+      <Text style={s.section}>Top matches</Text>
       {loadingMatches ? (
         <ActivityIndicator color={C.brand} style={s.loader} />
+      ) : matches.length === 0 ? (
+        <View style={s.card}>
+          <Text style={s.rowTitle}>No matches yet</Text>
+          <Text style={s.rowSub}>Complete onboarding and wait for coworkers on similar routes.</Text>
+        </View>
       ) : (
         matches.slice(0, 3).map((m, i) => (
           <AppPressable
@@ -273,64 +332,30 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
             <View style={{ flex: 1 }}>
               <Text style={s.rowTitle}>{m.name}</Text>
               <Text style={s.rowSub}>
-                {m.time} - {m.seats} seats - {m.area} - +{m.detour} min
+                {m.score}% match · Route {m.overlap}% · Time {m.timeScore}%
+                {m.area ? ` · ${m.area}` : ''}
               </Text>
             </View>
-            <Badge label={i === 1 ? '1 left' : 'Join'} tone={i === 1 ? 'sky' : 'brand'} />
+            <Badge label={i === 0 ? 'Top' : 'View'} tone={i === 0 ? 'brand' : 'gray'} />
           </AppPressable>
         ))
       )}
-
-      <Text style={s.impactHomeEyebrow}>Your Impact</Text>
-      <View style={s.impactHero}>
-        {loadingImpact ? (
-          <ActivityIndicator color={C.brand} style={{ paddingVertical: 24 }} />
-        ) : (
-          <>
-            <Text style={s.impactHomeLabel}>Total gas money saved</Text>
-            <Text style={s.heroNum}>${impact.saved}</Text>
-            <View style={s.statsMini}>
-              <View style={{ alignItems: 'center' }}>
-                <Text style={[s.statNum, { color: C.sky }]}>{impact.co2}kg</Text>
-                <Text style={s.statKey}>CO2 avoided</Text>
-              </View>
-              <View style={{ alignItems: 'center' }}>
-                <Text style={s.statNum}>{impact.rides}</Text>
-                <Text style={s.statKey}>Rides shared</Text>
-              </View>
-            </View>
-          </>
-        )}
-      </View>
-
-      <Text style={s.section}>This Week</Text>
+      <Text style={s.section}>This week</Text>
       <View style={s.card}>
-        {week.map(([d, detail, b]) => (
-          <View key={d} style={s.weekRow}>
-            <Text style={[s.weekDay, d === 'TUE' && { color: C.brand }]}>{d}</Text>
-            <Text style={[s.weekText, (b === 'Solo' || b === 'Remote') && { color: C.muted }]}>{detail}</Text>
-            {b === 'Find' ? (
-              <AppPressable
-                variant="ghost"
-                style={s.ghostBtn}
-                onPress={() => {
-                  setFindFocusId(null);
-                  setTab('matches');
-                }}
-                android_ripple={{ color: 'rgba(255,255,255,0.12)' }}
-              >
-                <Text style={s.ghostText}>Find</Text>
-              </AppPressable>
-            ) : (
-              <Badge label={b} tone={b === 'Confirmed' ? 'brand' : b === 'Driver' ? 'amber' : 'gray'} />
-            )}
-          </View>
-        ))}
+        <Text style={s.rowSub}>
+          Calendar sync is not connected yet. Use Find to plan rides with matched coworkers.
+        </Text>
+        <AppPressable
+          variant="ghost"
+          style={[s.ghostBtn, { alignSelf: 'flex-start', marginTop: 12 }]}
+          onPress={() => setTab('matches')}
+        >
+          <Text style={s.ghostText}>Open Find</Text>
+        </AppPressable>
       </View>
     </ScrollView>
   );
 
-  /** Tab row (icons + labels) + one safe-area inset — not doubled with screen safe area. */
   const tabBarBottomPad = Math.max(insets.bottom, 8);
   const tabBarHeight = 58 + tabBarBottomPad;
 
@@ -349,7 +374,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
             setSearch={setSearch}
             filters={filters}
             toggleFilter={toggleFilter}
-            requested={requested}
+            pendingDriverIds={pendingDriverIds}
             setSheet={setSheet}
             setChatConvId={setChatConvId}
             setChatSub={setChatSub}
@@ -358,27 +383,34 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
         )}
         {tab === 'rides' && (
           <RidesTab
+            accessToken={accessToken}
             bottomPadding={tabBarHeight}
+            refreshKey={ridesRefreshKey}
             onPressFind={() => {
               setFindFocusId(null);
               setTab('matches');
             }}
+            onRidesMutated={() => setRidesRefreshKey((k) => k + 1)}
           />
         )}
         {tab === 'chat' && chatSub === 'list' && (
           <ChatList
             bottomPadding={tabBarHeight}
-            onOpenThread={(id) => {
-              setChatConvId(id);
+            onOpenThread={(c) => {
+              setChatThread({ id: c.id, title: c.title });
               setChatSub('thread');
             }}
           />
         )}
-        {tab === 'chat' && chatSub === 'thread' && (
+        {tab === 'chat' && chatSub === 'thread' && chatThread != null && (
           <ChatThread
-            conversationId={chatConvId}
+            conversationId={chatThread.id}
+            threadTitle={chatThread.title}
             bottomPadding={tabBarHeight}
-            onBack={() => setChatSub('list')}
+            onBack={() => {
+              setChatSub('list');
+              setChatThread(null);
+            }}
           />
         )}
         {tab === 'profile' && (
@@ -405,6 +437,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
                 onPress={() => {
                   if (k === 'chat') {
                     setChatSub('list');
+                    setChatThread(null);
                   }
                   if (k === 'matches') {
                     setFindFocusId(null);
@@ -430,23 +463,31 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
               <>
                 <Text style={s.sheetTitle}>Confirm ride request</Text>
                 <Text style={s.sheetBody}>
-                  Send a request to {sheet.name} for the {sheet.time} commute from {sheet.area}.
+                  Send {sheet.name} a request to share a commute. After they accept, either of you can mark the
+                  ride complete under My Rides → Upcoming. That adds the estimated savings and CO₂ to both of your
+                  Impact tabs.
                 </Text>
                 <View style={s.card}>
                   {[
                     ['Match score', `${sheet.score}%`],
-                    ['Detour', `+${sheet.detour} min`],
-                    ['Estimated share', `$${sheet.cost.toFixed(2)}`],
-                    ['CO2 saved', `${sheet.co2.toFixed(1)}kg`],
+                    ['Route overlap', `${sheet.overlap}%`],
+                    ['Time fit', `${sheet.timeScore}%`],
                   ].map(([rowLabel, v], idx) => (
-                    <View key={String(rowLabel)} style={[s.sheetRow, idx === 3 && { borderBottomWidth: 0 }]}>
+                    <View key={String(rowLabel)} style={[s.sheetRow, idx === 2 && { borderBottomWidth: 0 }]}>
                       <Text style={s.rowSub}>{rowLabel}</Text>
                       <Text style={s.sheetVal}>{v}</Text>
                     </View>
                   ))}
                 </View>
-                <AppPressable variant="primary" style={s.sheetConfirmBtn} onPress={confirm}>
-                  <Text style={s.sheetConfirmText}>Confirm</Text>
+                <AppPressable
+                  variant="primary"
+                  style={[s.sheetConfirmBtn, confirmLoading && { opacity: 0.65 }]}
+                  onPress={confirm}
+                  disabled={confirmLoading}
+                  accessibilityRole="button"
+                  accessibilityLabel={confirmLoading ? 'Sending request' : 'Confirm ride request'}
+                >
+                  <Text style={s.sheetConfirmText}>{confirmLoading ? 'Sending…' : 'Confirm request'}</Text>
                 </AppPressable>
                 <AppPressable
                   variant="link"
@@ -584,6 +625,7 @@ const s = StyleSheet.create({
     gap: 10,
     marginHorizontal: 16,
     marginTop: 14,
+    marginBottom: 16,
     backgroundColor: C.card,
     borderWidth: 1,
     borderColor: C.line,
@@ -634,6 +676,7 @@ const s = StyleSheet.create({
   },
   between: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   matchName: { color: C.text, fontSize: 17, fontWeight: '800' },
+  matchEmail: { color: C.faint, fontSize: 11, marginTop: 4 },
   score: { color: C.brand, fontSize: 28, fontWeight: '800' },
   scoreLbl: { color: C.faint, fontSize: 10, textTransform: 'uppercase', fontWeight: '700' },
   bar: {
@@ -663,10 +706,18 @@ const s = StyleSheet.create({
     backgroundColor: C.brand,
     borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 14,
+    paddingHorizontal: 10,
+    minHeight: 48,
   },
-  primaryText: { color: '#021b14', fontSize: 14, fontWeight: '800' },
-  /** Modal confirm: do not use flex:1 from primary — it stretches the hit area and can hide label */
+  /** Light text on brand green — dark text was hard to see on some devices */
+  primaryText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
   sheetConfirmBtn: {
     marginTop: 18,
     backgroundColor: C.brand,
@@ -678,25 +729,9 @@ const s = StyleSheet.create({
     alignSelf: 'stretch',
   },
   sheetConfirmText: {
-    color: '#000000',
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
-  },
-  impactHomeEyebrow: {
-    color: C.faint,
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    paddingHorizontal: 20,
-    marginTop: 20,
-    marginBottom: 8,
-  },
-  impactHomeLabel: {
-    color: C.muted,
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 0,
   },
   impactHero: {
     marginHorizontal: 16,
@@ -782,7 +817,7 @@ function FindMatchesList({
   setSearch,
   filters,
   toggleFilter,
-  requested,
+  pendingDriverIds,
   setSheet,
   setChatConvId,
   setChatSub,
@@ -879,7 +914,7 @@ function FindMatchesList({
 
   const renderItem = useCallback(
     ({ item: m, index: i }) => {
-      const done = requested.includes(m.id);
+      const done = pendingDriverIds.includes(m.id);
       const focused = findFocusId === m.id;
       const isTopMatch = m.id === shown[0]?.id;
       return (
@@ -954,7 +989,7 @@ function FindMatchesList({
         </View>
       );
     },
-    [findFocusId, shown, requested, setSheet, setChatConvId, setChatSub, setTab],
+    [findFocusId, shown, pendingDriverIds, setSheet, setChatConvId, setChatSub, setTab],
   );
 
   return (
@@ -963,7 +998,7 @@ function FindMatchesList({
       style={{ flex: 1 }}
       data={listData}
       keyExtractor={(item) => item.id}
-      extraData={`${findFocusId}-${requested.join(',')}`}
+      extraData={`${findFocusId}-${pendingDriverIds.join(',')}`}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
       ListHeaderComponent={listHeader}
