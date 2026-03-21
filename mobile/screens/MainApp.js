@@ -112,6 +112,14 @@ function normalizeMatch(x, i) {
         : ''),
     area: x.pickup_area ?? x.neighborhood ?? firstLineAddress(x.home_address),
     color: MATCH_COLORS[i % MATCH_COLORS.length],
+    // Find list row extras (mock UI); real API matches omit these — keep defined for .toFixed / labels.
+    seats: x.seats != null ? x.seats : 2,
+    role: x.role ?? 'Carpool',
+    team: x.team ?? 'match',
+    eta: Number(x.eta ?? 0) || 0,
+    detour: Number(x.detour ?? 0) || 0,
+    cost: Number(x.cost ?? x.share ?? 0) || 0,
+    co2: Number(x.co2 ?? x.co2_kg ?? 0) || 0,
   };
 }
 
@@ -921,14 +929,14 @@ function FindMatchesList({
         <View style={[s.match, isTopMatch && !focused && { borderColor: C.brand }, focused && s.matchFocused]}>
           <View style={s.between}>
             <Badge label={isTopMatch ? 'Top Match' : 'Driving tomorrow'} tone={isTopMatch ? 'brand' : 'gray'} />
-            {done ? <Badge label="Requested" tone="sky" /> : <Badge label={`${m.seats} seats`} />}
+            {done ? <Badge label="Requested" tone="sky" /> : <Badge label={`${m.seats ?? 2} seats`} />}
           </View>
           <View style={[s.row, { marginHorizontal: 0, paddingHorizontal: 0 }]}>
             <Avatar initials={m.initials} color={m.color} size={48} />
             <View style={{ flex: 1 }}>
               <Text style={s.matchName}>{m.name}</Text>
               <Text style={s.rowSub}>
-                {m.role} - {m.team}
+                {[m.role, m.team].filter(Boolean).join(' · ') || 'Route match'}
               </Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
@@ -937,7 +945,8 @@ function FindMatchesList({
             </View>
           </View>
           <Text style={s.rowSub}>
-            {m.time} from {m.area} - {m.eta} min est.
+            {[m.time, m.area].filter(Boolean).join(' · ') || 'Commute details from profile'}
+            {m.eta != null && m.eta > 0 ? ` · ${m.eta} min est.` : ''}
           </Text>
           <View style={s.bar}>
             <View style={[s.fill, { width: `${m.overlap}%` }]} />
@@ -949,7 +958,9 @@ function FindMatchesList({
           </View>
           <View style={s.metrics}>
             <View style={s.metric}>
-              <Text style={[s.metricNum, { color: i === 1 ? C.amber : C.brand }]}>+{m.detour} min</Text>
+              <Text style={[s.metricNum, { color: i === 1 ? C.amber : C.brand }]}>
+                +{Number(m.detour ?? 0)} min
+              </Text>
               <Text style={s.metricKey}>Detour</Text>
             </View>
             <View style={s.metric}>
@@ -957,11 +968,11 @@ function FindMatchesList({
               <Text style={s.metricKey}>Departs</Text>
             </View>
             <View style={s.metric}>
-              <Text style={[s.metricNum, { color: C.brand }]}>${m.cost.toFixed(2)}</Text>
+              <Text style={[s.metricNum, { color: C.brand }]}>${Number(m.cost ?? 0).toFixed(2)}</Text>
               <Text style={s.metricKey}>Your share</Text>
             </View>
             <View style={s.metric}>
-              <Text style={[s.metricNum, { color: C.sky }]}>{m.co2.toFixed(1)}kg</Text>
+              <Text style={[s.metricNum, { color: C.sky }]}>{Number(m.co2 ?? 0).toFixed(1)}kg</Text>
               <Text style={s.metricKey}>CO2 saved</Text>
             </View>
           </View>
