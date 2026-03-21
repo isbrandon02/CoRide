@@ -112,6 +112,7 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState(['Morning']);
   const [sheet, setSheet] = useState(null);
+  const [cancelSheet, setCancelSheet] = useState(null);
   const [requested, setRequested] = useState([]);
 
   const apiBase = API_BASE_URL;
@@ -183,6 +184,11 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
     setRequested((cur) => (cur.includes(sheet.id) ? cur : [sheet.id, ...cur]));
     setSheet(null);
     setTab('home');
+  };
+  const confirmCancel = () => {
+    if (!cancelSheet) return;
+    setRequested((cur) => cur.filter((id) => id !== cancelSheet.id));
+    setCancelSheet(null);
   };
 
   const name = displayName || 'there';
@@ -366,6 +372,11 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
                 <Pressable disabled={done} style={[s.primary, done && { opacity: 0.55 }]} onPress={() => setSheet(m)}>
                   <Text style={s.primaryText}>{done ? 'Ride Requested' : 'Request Ride'}</Text>
                 </Pressable>
+                {done ? (
+                  <Pressable style={s.cancelBtn} onPress={() => setCancelSheet(m)}>
+                    <Text style={s.cancelText}>Cancel</Text>
+                  </Pressable>
+                ) : null}
                 <Pressable style={s.ghostBtnWide}>
                   <Text style={s.ghostText}>Chat</Text>
                 </Pressable>
@@ -493,6 +504,29 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
                 <Pressable style={{ alignItems: 'center', paddingVertical: 14 }} onPress={() => setSheet(null)}>
                   <Text style={s.sub}>Cancel</Text>
                 </Pressable>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+      <Modal visible={!!cancelSheet} transparent animationType="fade" onRequestClose={() => setCancelSheet(null)}>
+        <View style={s.centerBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setCancelSheet(null)} />
+          <View style={s.centerCard}>
+            {cancelSheet && (
+              <>
+                <Text style={s.centerTitle}>Cancel ride request?</Text>
+                <Text style={s.centerBody}>
+                  This will remove your request for {cancelSheet.name}'s {cancelSheet.time} ride.
+                </Text>
+                <View style={s.centerActions}>
+                  <Pressable style={s.centerGhost} onPress={() => setCancelSheet(null)}>
+                    <Text style={s.ghostText}>Keep</Text>
+                  </Pressable>
+                  <Pressable style={s.centerDanger} onPress={confirmCancel}>
+                    <Text style={s.centerDangerText}>Yes, cancel</Text>
+                  </Pressable>
+                </View>
               </>
             )}
           </View>
@@ -688,6 +722,17 @@ const s = StyleSheet.create({
     paddingVertical: 14,
   },
   primaryText: { color: '#021b14', fontSize: 14, fontWeight: '800' },
+  cancelBtn: {
+    minWidth: 76,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(245,80,80,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,80,80,0.35)',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+  },
+  cancelText: { color: '#f5a3a3', fontSize: 12, fontWeight: '700' },
   impactHero: {
     marginHorizontal: 16,
     marginTop: 14,
@@ -764,4 +809,44 @@ const s = StyleSheet.create({
     borderBottomColor: C.line,
   },
   sheetVal: { color: C.text, fontSize: 13, fontWeight: '800' },
+  centerBackdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingHorizontal: 24,
+  },
+  centerCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: C.panel,
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 22,
+    padding: 20,
+  },
+  centerTitle: { color: C.text, fontSize: 20, fontWeight: '800', textAlign: 'center' },
+  centerBody: { color: C.muted, fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 10 },
+  centerActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  centerGhost: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 12,
+    paddingVertical: 13,
+  },
+  centerDanger: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(245,80,80,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,80,80,0.35)',
+    borderRadius: 12,
+    paddingVertical: 13,
+  },
+  centerDangerText: { color: '#f5a3a3', fontSize: 13, fontWeight: '800' },
 });
