@@ -14,7 +14,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { API_BASE_URL } from '../src/config';
+import { ChatList, ChatThread } from './ChatTab';
 import ProfileSettingsScreen from './ProfileSettingsScreen';
+import RidesTab from './RidesTab';
 
 const C = {
   bg: '#0a0a0f',
@@ -113,6 +115,9 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
   const [filters, setFilters] = useState(['Morning']);
   const [sheet, setSheet] = useState(null);
   const [requested, setRequested] = useState([]);
+  /** chat: inbox vs thread (demo) */
+  const [chatSub, setChatSub] = useState('list');
+  const [chatConvId, setChatConvId] = useState('morning');
 
   const apiBase = API_BASE_URL;
 
@@ -366,7 +371,14 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
                 <Pressable disabled={done} style={[s.primary, done && { opacity: 0.55 }]} onPress={() => setSheet(m)}>
                   <Text style={s.primaryText}>{done ? 'Ride Requested' : 'Request Ride'}</Text>
                 </Pressable>
-                <Pressable style={s.ghostBtnWide}>
+                <Pressable
+                  style={s.ghostBtnWide}
+                  onPress={() => {
+                    setChatConvId('morning');
+                    setChatSub('thread');
+                    setTab('chat');
+                  }}
+                >
                   <Text style={s.ghostText}>Chat</Text>
                 </Pressable>
               </View>
@@ -431,10 +443,23 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
         {tab === 'matches' && <Matches />}
         {tab === 'impact' && <Impact />}
         {tab === 'rides' && (
-          <View style={s.placeholder}>
-            <Text style={s.title}>My Rides</Text>
-            <Text style={s.subCenter}>Upcoming and past rides will appear here.</Text>
-          </View>
+          <RidesTab bottomPadding={tabBarHeight} onPressFind={() => setTab('matches')} />
+        )}
+        {tab === 'chat' && chatSub === 'list' && (
+          <ChatList
+            bottomPadding={tabBarHeight}
+            onOpenThread={(id) => {
+              setChatConvId(id);
+              setChatSub('thread');
+            }}
+          />
+        )}
+        {tab === 'chat' && chatSub === 'thread' && (
+          <ChatThread
+            conversationId={chatConvId}
+            bottomPadding={tabBarHeight}
+            onBack={() => setChatSub('list')}
+          />
         )}
         {tab === 'profile' && (
           <View style={s.profileWrap}>
@@ -452,11 +477,21 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
             ['matches', 'Find'],
             ['impact', 'Impact'],
             ['rides', 'Rides'],
+            ['chat', 'Chat'],
             ['profile', 'Profile'],
           ].map(([k, l]) => {
             const on = tab === k;
             return (
-              <Pressable key={k} style={[s.tab, on && s.tabOn]} onPress={() => setTab(k)}>
+              <Pressable
+                key={k}
+                style={[s.tab, on && s.tabOn]}
+                onPress={() => {
+                  if (k === 'chat') {
+                    setChatSub('list');
+                  }
+                  setTab(k);
+                }}
+              >
                 <Text style={[s.tabText, on && { color: C.brand }]}>{l}</Text>
               </Pressable>
             );
