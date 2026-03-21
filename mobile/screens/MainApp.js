@@ -66,9 +66,9 @@ function Avatar({ initials, color, size = 42 }) {
 
 function greetingLine() {
   const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
+  if (h < 12) return 'Good Morning';
+  if (h < 17) return 'Good Afternoon';
+  return 'Good Evening';
 }
 
 function normalizeMatch(x, i) {
@@ -102,7 +102,7 @@ function normalizeMatch(x, i) {
 }
 
 /**
- * Signed-in shell: Home / Find / Impact / Rides + Profile (settings).
+ * Signed-in shell: Home (impact + schedule) / Find / Rides / Chat / Profile.
  */
 export default function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
   const insets = useSafeAreaInsets();
@@ -196,47 +196,34 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
   const Home = () => (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.pad}>
       <View style={s.hero}>
-        <Text style={s.smallMuted}>{greet}</Text>
-        <Text style={s.title}>{name}</Text>
+        <Text style={s.heroHeadline}>{`${greet},`}</Text>
+        <Text style={s.heroHeadline}>{name}</Text>
         <Text style={s.sub}>{matches.slice(0, 3).length} coworkers are driving your route today</Text>
       </View>
       <Pressable style={s.alert} onPress={() => setTab('matches')}>
         <Text style={s.alertOver}>{requested.length ? 'Ride requested' : "Today's commute"}</Text>
-        <Text style={s.alertTitle}>
-          {commute ? `${requested.length ? 'Waiting on' : 'Best match:'} ${commute.name}` : 'No ride lined up yet'}
-        </Text>
-        <Text style={s.alertSub}>
-          {commute
-            ? `${commute.time} - ${commute.area} - ${commute.seats} seats open`
-            : 'Open Find to request tomorrow morning'}
-        </Text>
-        <View style={s.rowWrap}>
-          <View style={s.pill}>
-            <Text style={s.pillText}>{requested.length ? 'Pending confirmation' : `${commute?.score ?? 0}% match`}</Text>
+          <Text style={s.alertTitle}>
+            {commute ? `${requested.length ? 'Waiting on' : 'Best match:'} ${commute.name}` : 'No ride lined up yet'}
+          </Text>
+          <Text style={s.alertSub}>
+            {commute
+              ? `${commute.time} - ${commute.area} - ${commute.seats} seats open`
+              : 'Open Find to request tomorrow morning'}
+          </Text>
+          <View style={s.rowWrap}>
+            <View style={s.pill}>
+              <Text style={s.pillText}>{requested.length ? 'Pending confirmation' : `${commute?.score ?? 0}% match`}</Text>
+            </View>
+            <View style={s.pill}>
+              <Text style={s.pillText}>${(commute?.cost ?? 0).toFixed(2)} share</Text>
+            </View>
+            <View style={s.pill}>
+              <Text style={s.pillText}>{commute?.eta ?? 0} min est.</Text>
+            </View>
           </View>
-          <View style={s.pill}>
-            <Text style={s.pillText}>${(commute?.cost ?? 0).toFixed(2)} share</Text>
-          </View>
-          <View style={s.pill}>
-            <Text style={s.pillText}>{commute?.eta ?? 0} min est.</Text>
-          </View>
-        </View>
-      </Pressable>
-      <View style={s.stats}>
-        <View style={s.stat}>
-          <Text style={[s.statNum, { color: C.brand }]}>${impact.saved}</Text>
-          <Text style={s.statKey}>Saved</Text>
-        </View>
-        <View style={s.stat}>
-          <Text style={[s.statNum, { color: C.sky }]}>{impact.co2}kg</Text>
-          <Text style={s.statKey}>CO2 less</Text>
-        </View>
-        <View style={s.stat}>
-          <Text style={s.statNum}>{impact.rides}</Text>
-          <Text style={s.statKey}>Rides</Text>
-        </View>
-      </View>
-      <Text style={s.section}>Coworkers Driving Today</Text>
+        </Pressable>
+
+        <Text style={s.section}>Coworkers Driving Today</Text>
       {loadingMatches ? (
         <ActivityIndicator color={C.brand} style={s.loader} />
       ) : (
@@ -253,6 +240,29 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
           </Pressable>
         ))
       )}
+
+      <Text style={s.impactHomeEyebrow}>Your Impact</Text>
+      <View style={s.impactHero}>
+        {loadingImpact ? (
+          <ActivityIndicator color={C.brand} style={{ paddingVertical: 24 }} />
+        ) : (
+          <>
+            <Text style={s.impactHomeLabel}>Total gas money saved</Text>
+            <Text style={s.heroNum}>${impact.saved}</Text>
+            <View style={s.statsMini}>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={[s.statNum, { color: C.sky }]}>{impact.co2}kg</Text>
+                <Text style={s.statKey}>CO2 avoided</Text>
+              </View>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={s.statNum}>{impact.rides}</Text>
+                <Text style={s.statKey}>Rides shared</Text>
+              </View>
+            </View>
+          </>
+        )}
+      </View>
+
       <Text style={s.section}>This Week</Text>
       <View style={s.card}>
         {week.map(([d, detail, b]) => (
@@ -389,50 +399,6 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
     </ScrollView>
   );
 
-  const Impact = () => {
-    const max = Math.max(...impact.weekly.map((x) => x.v), 1);
-    return (
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.pad}>
-        <View style={s.head}>
-          <View>
-            <Text style={s.title}>My Impact</Text>
-            <Text style={s.sub}>Savings and CO2 avoided</Text>
-          </View>
-        </View>
-        <View style={s.impactHero}>
-          <Text style={s.sub}>Total gas money saved</Text>
-          <Text style={s.heroNum}>${impact.saved}</Text>
-          <View style={s.statsMini}>
-            <View style={{ alignItems: 'center' }}>
-              <Text style={[s.statNum, { color: C.sky }]}>{impact.co2}kg</Text>
-              <Text style={s.statKey}>CO2 avoided</Text>
-            </View>
-            <View style={{ alignItems: 'center' }}>
-              <Text style={s.statNum}>{impact.rides}</Text>
-              <Text style={s.statKey}>Rides shared</Text>
-            </View>
-          </View>
-        </View>
-        <Text style={s.section}>Weekly Savings</Text>
-        <View style={s.card}>
-          {loadingImpact ? (
-            <ActivityIndicator color={C.brand} style={s.loader} />
-          ) : (
-            impact.weekly.map((x) => (
-              <View key={x.d} style={s.barRow}>
-                <Text style={s.barDay}>{x.d}</Text>
-                <View style={s.barTrack}>
-                  <View style={[s.fill, { width: `${(x.v / max) * 100}%` }]} />
-                </View>
-                <Text style={s.barVal}>${x.v}</Text>
-              </View>
-            ))
-          )}
-        </View>
-      </ScrollView>
-    );
-  };
-
   const tabBarHeight = 72 + insets.bottom;
 
   return (
@@ -441,7 +407,6 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
       <View style={s.root}>
         {tab === 'home' && <Home />}
         {tab === 'matches' && <Matches />}
-        {tab === 'impact' && <Impact />}
         {tab === 'rides' && (
           <RidesTab bottomPadding={tabBarHeight} onPressFind={() => setTab('matches')} />
         )}
@@ -475,7 +440,6 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
           {[
             ['home', 'Home'],
             ['matches', 'Find'],
-            ['impact', 'Impact'],
             ['rides', 'Rides'],
             ['chat', 'Chat'],
             ['profile', 'Profile'],
@@ -543,6 +507,14 @@ const s = StyleSheet.create({
   profileWrap: { flex: 1 },
   pad: { paddingBottom: 112 },
   hero: { padding: 20, backgroundColor: C.card },
+  /** Greeting + name: same size/weight as former "Good Evening" line */
+  heroHeadline: {
+    color: C.text,
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 26,
+    marginBottom: 6,
+  },
   smallMuted: { color: C.muted, fontSize: 14 },
   title: { color: C.text, fontSize: 28, fontWeight: '800', marginTop: 2 },
   sub: { color: C.muted, fontSize: 13, marginTop: 6 },
@@ -739,9 +711,25 @@ const s = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
+  impactHomeEyebrow: {
+    color: C.faint,
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    paddingHorizontal: 20,
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  impactHomeLabel: {
+    color: C.muted,
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 0,
+  },
   impactHero: {
     marginHorizontal: 16,
-    marginTop: 14,
+    marginTop: 0,
     backgroundColor: C.brandSoft,
     borderWidth: 1,
     borderColor: C.brand,
@@ -759,16 +747,6 @@ const s = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: C.line,
   },
-  barRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
-  barDay: { width: 34, color: C.faint, fontSize: 12 },
-  barTrack: {
-    flex: 1,
-    height: 8,
-    borderRadius: 99,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    overflow: 'hidden',
-  },
-  barVal: { width: 36, textAlign: 'right', color: C.text, fontSize: 12, fontWeight: '700' },
   placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
   subCenter: { color: C.muted, fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 10 },
   tabs: {
