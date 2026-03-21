@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 import { API_BASE_URL } from '../src/config';
 import { ChatList, ChatThread } from './ChatTab';
@@ -40,6 +41,14 @@ const MATCHES = [
 ];
 const IMPACT = { saved: 142, co2: 47, rides: 23, weekly: [{ d: 'Mon', v: 9 }, { d: 'Tue', v: 14 }, { d: 'Wed', v: 0 }, { d: 'Thu', v: 11 }, { d: 'Fri', v: 7 }, { d: 'Sat', v: 3 }, { d: 'Sun', v: 0 }] };
 const FILTERS = ['Morning', 'Has car', '<=10 min detour', '2+ seats'];
+
+const TAB_BAR_ITEMS = [
+  { key: 'home', label: 'Home', iconOn: 'home', iconOff: 'home-outline' },
+  { key: 'matches', label: 'Find', iconOn: 'search', iconOff: 'search-outline' },
+  { key: 'rides', label: 'Activity', iconOn: 'calendar', iconOff: 'calendar-outline' },
+  { key: 'chat', label: 'Chat', iconOn: 'chatbubbles', iconOff: 'chatbubbles-outline' },
+  { key: 'profile', label: 'Profile', iconOn: 'person', iconOff: 'person-outline' },
+];
 
 const badgeTone = {
   brand: { bg: C.brandSoft, fg: C.brand },
@@ -70,6 +79,19 @@ function greetingLine() {
   if (h < 12) return 'Good Morning';
   if (h < 17) return 'Good Afternoon';
   return 'Good Evening';
+}
+
+/** Subtle press feedback for Home list rows (scale + dim). */
+function homeRowPressed(pressed) {
+  return pressed ? { transform: [{ scale: 0.98 }], opacity: 0.78 } : null;
+}
+
+function homeAlertPressed(pressed) {
+  return pressed ? { transform: [{ scale: 0.987 }] } : null;
+}
+
+function homeGhostPressed(pressed) {
+  return pressed ? { transform: [{ scale: 0.96 }], opacity: 0.75 } : null;
 }
 
 function normalizeMatch(x, i) {
@@ -218,7 +240,11 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
         <Text style={s.heroHeadline}>{name}</Text>
         <Text style={s.sub}>{matches.slice(0, 3).length} coworkers are driving your route today</Text>
       </View>
-      <Pressable style={s.alert} onPress={() => setTab('matches')}>
+      <Pressable
+        style={({ pressed }) => [s.alert, homeAlertPressed(pressed)]}
+        onPress={() => setTab('matches')}
+        android_ripple={{ color: 'rgba(0,0,0,0.14)' }}
+      >
         <Text style={s.alertOver}>{requested.length ? 'Ride requested' : "Today's commute"}</Text>
           <Text style={s.alertTitle}>
             {commute ? `${requested.length ? 'Waiting on' : 'Best match:'} ${commute.name}` : 'No ride lined up yet'}
@@ -248,11 +274,12 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
         matches.slice(0, 3).map((m, i) => (
           <Pressable
             key={m.id}
-            style={s.row}
+            style={({ pressed }) => [s.row, homeRowPressed(pressed)]}
             onPress={() => {
               setFindFocusId(m.id);
               setTab('matches');
             }}
+            android_ripple={{ color: 'rgba(255,255,255,0.1)' }}
           >
             <Avatar initials={m.initials} color={m.color} />
             <View style={{ flex: 1 }}>
@@ -296,11 +323,12 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
             <Text style={[s.weekText, (b === 'Solo' || b === 'Remote') && { color: C.muted }]}>{detail}</Text>
             {b === 'Find' ? (
               <Pressable
-                style={s.ghostBtn}
+                style={({ pressed }) => [s.ghostBtn, homeGhostPressed(pressed)]}
                 onPress={() => {
                   setFindFocusId(null);
                   setTab('matches');
                 }}
+                android_ripple={{ color: 'rgba(255,255,255,0.12)' }}
               >
                 <Text style={s.ghostText}>Find</Text>
               </Pressable>
@@ -313,7 +341,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
     </ScrollView>
   );
 
-  const tabBarHeight = 72 + insets.bottom;
+  const tabBarHeight = 82 + insets.bottom;
 
   return (
     <SafeAreaView style={s.safe}>
@@ -373,18 +401,15 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
           </View>
         )}
         <View style={[s.tabs, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-          {[
-            ['home', 'Home'],
-            ['matches', 'Find'],
-            ['rides', 'Rides'],
-            ['chat', 'Chat'],
-            ['profile', 'Profile'],
-          ].map(([k, l]) => {
+          {TAB_BAR_ITEMS.map(({ key: k, label: l, iconOn, iconOff }) => {
             const on = tab === k;
             return (
               <Pressable
                 key={k}
                 style={[s.tab, on && s.tabOn]}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={l}
                 onPress={() => {
                   if (k === 'chat') {
                     setChatSub('list');
@@ -395,7 +420,10 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
                   setTab(k);
                 }}
               >
-                <Text style={[s.tabText, on && { color: C.brand }]}>{l}</Text>
+                <View style={s.tabInner}>
+                  <Ionicons name={on ? iconOn : iconOff} size={22} color={on ? C.brand : C.faint} />
+                  <Text style={[s.tabText, on && { color: C.brand }]}>{l}</Text>
+                </View>
               </Pressable>
             );
           })}
@@ -480,6 +508,7 @@ const s = StyleSheet.create({
     backgroundColor: C.brand,
     borderRadius: 22,
     padding: 18,
+    overflow: 'hidden',
   },
   alertOver: { color: 'rgba(0,0,0,0.55)', fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
   alertTitle: { color: '#021b14', fontSize: 21, fontWeight: '800', marginTop: 6 },
@@ -507,6 +536,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     marginHorizontal: 8,
     borderRadius: 18,
+    overflow: 'hidden',
   },
   rowTitle: { color: C.text, fontSize: 15, fontWeight: '700' },
   rowSub: { color: C.muted, fontSize: 12, marginTop: 4 },
@@ -539,6 +569,7 @@ const s = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
+    overflow: 'hidden',
   },
   ghostBtnWide: {
     minWidth: 74,
@@ -705,9 +736,10 @@ const s = StyleSheet.create({
     borderTopColor: C.line,
     paddingTop: 10,
   },
-  tab: { borderRadius: 14, paddingHorizontal: 10, paddingVertical: 8 },
+  tab: { borderRadius: 14, paddingHorizontal: 6, paddingVertical: 6, minWidth: 56 },
   tabOn: { backgroundColor: C.brandSoft },
-  tabText: { color: C.faint, fontSize: 11, fontWeight: '700' },
+  tabInner: { alignItems: 'center', justifyContent: 'center', gap: 3 },
+  tabText: { color: C.faint, fontSize: 10, fontWeight: '700' },
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
     backgroundColor: C.panel,

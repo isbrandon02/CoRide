@@ -92,8 +92,8 @@ export default function RidesTab({ bottomPadding, onPressFind }) {
     >
       <View style={styles.head}>
         <View>
-          <Text style={styles.title}>My Rides</Text>
-          <Text style={styles.sub}>Upcoming & past</Text>
+          <Text style={styles.title}>Activity</Text>
+          <Text style={styles.sub}>Upcoming, history & driving</Text>
         </View>
         <Pressable style={styles.findBtn} onPress={onPressFind}>
           <Text style={styles.findBtnTxt}>+ Find</Text>

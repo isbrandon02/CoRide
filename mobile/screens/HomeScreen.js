@@ -28,7 +28,7 @@ const purple = '#A855F7';
 const TAB_DEF = [
   { key: 'home', label: 'Home', icon: 'home' },
   { key: 'find', label: 'Find', icon: 'search', badgeKey: 'find' },
-  { key: 'rides', label: 'Rides', icon: 'calendar-outline' },
+  { key: 'rides', label: 'Activity', icon: 'calendar-outline' },
   { key: 'chat', label: 'Chat', icon: 'chatbubble-outline', badge: 2 },
   { key: 'impact', label: 'Impact', icon: 'wallet-outline' },
   { key: 'profile', label: 'Profile', icon: 'person-outline' },
