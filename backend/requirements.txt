@@ -1,6 +1,7 @@
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
-sqlalchemy>=2.0.0
+# 2.0.31+ fixes Python 3.13 import crash (FastIntFlag / __firstlineno__)
+sqlalchemy>=2.0.36
 python-jose[cryptography]>=3.3.0
 bcrypt>=4.0.0
 python-multipart>=0.0.9
