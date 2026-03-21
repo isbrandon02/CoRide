@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   ActivityIndicator,
+  FlatList,
   Modal,
   Pressable,
   SafeAreaView,
@@ -104,7 +105,7 @@ function normalizeMatch(x, i) {
 /**
  * Signed-in shell: Home (impact + schedule) / Find / Rides / Chat / Profile.
  */
-export default function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
+function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState('home');
   const [matches, setMatches] = useState(MATCHES);
@@ -118,6 +119,8 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
   /** chat: inbox vs thread (demo) */
   const [chatSub, setChatSub] = useState('list');
   const [chatConvId, setChatConvId] = useState('morning');
+  /** When set, Find tab scrolls to this match and highlights it (e.g. from Home). */
+  const [findFocusId, setFindFocusId] = useState(null);
 
   const apiBase = API_BASE_URL;
 
@@ -171,6 +174,19 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
     [matches, search, filters],
   );
 
+  const displayedMatches = useMemo(() => {
+    if (!findFocusId) return shown;
+    const focus = matches.find((m) => m.id === findFocusId);
+    if (!focus || shown.some((m) => m.id === findFocusId)) return shown;
+    return [focus, ...shown.filter((m) => m.id !== findFocusId)];
+  }, [shown, matches, findFocusId]);
+
+  useEffect(() => {
+    if (tab !== 'matches' || !findFocusId) return;
+    const t = setTimeout(() => setFindFocusId(null), 3500);
+    return () => clearTimeout(t);
+  }, [tab, findFocusId]);
+
   const top = shown[0] ?? matches[0];
   const commute = requested.length ? matches.find((m) => m.id === requested[0]) ?? top : top;
   const week = [
@@ -181,8 +197,10 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
     ['FRI', 'No match yet', 'Find'],
   ];
 
-  const toggleFilter = (f) =>
-    setFilters((cur) => (cur.includes(f) ? cur.filter((x) => x !== f) : [...cur, f]));
+  const toggleFilter = useCallback(
+    (f) => setFilters((cur) => (cur.includes(f) ? cur.filter((x) => x !== f) : [...cur, f])),
+    [],
+  );
   const confirm = () => {
     if (!sheet) return;
     setRequested((cur) => (cur.includes(sheet.id) ? cur : [sheet.id, ...cur]));
@@ -228,7 +246,14 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
         <ActivityIndicator color={C.brand} style={s.loader} />
       ) : (
         matches.slice(0, 3).map((m, i) => (
-          <Pressable key={m.id} style={s.row} onPress={() => setTab('matches')}>
+          <Pressable
+            key={m.id}
+            style={s.row}
+            onPress={() => {
+              setFindFocusId(m.id);
+              setTab('matches');
+            }}
+          >
             <Avatar initials={m.initials} color={m.color} />
             <View style={{ flex: 1 }}>
               <Text style={s.rowTitle}>{m.name}</Text>
@@ -270,7 +295,13 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
             <Text style={[s.weekDay, d === 'TUE' && { color: C.brand }]}>{d}</Text>
             <Text style={[s.weekText, (b === 'Solo' || b === 'Remote') && { color: C.muted }]}>{detail}</Text>
             {b === 'Find' ? (
-              <Pressable style={s.ghostBtn} onPress={() => setTab('matches')}>
+              <Pressable
+                style={s.ghostBtn}
+                onPress={() => {
+                  setFindFocusId(null);
+                  setTab('matches');
+                }}
+              >
                 <Text style={s.ghostText}>Find</Text>
               </Pressable>
             ) : (
@@ -282,123 +313,6 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
     </ScrollView>
   );
 
-  const Matches = () => (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.pad}>
-      <View style={s.head}>
-        <View>
-          <Text style={s.title}>Find a Ride</Text>
-          <Text style={s.sub}>Matched for tomorrow morning</Text>
-        </View>
-        <Pressable style={s.ghostBtn}>
-          <Text style={s.ghostText}>Filter</Text>
-        </Pressable>
-      </View>
-      <View style={s.search}>
-        <Text style={s.searchLbl}>Search</Text>
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Coworkers, teams, neighborhoods"
-          placeholderTextColor={C.faint}
-          style={s.input}
-        />
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
-        {FILTERS.map((f) => {
-          const on = filters.includes(f);
-          return (
-            <Pressable key={f} style={[s.chip, on && s.chipOn]} onPress={() => toggleFilter(f)}>
-              <Text style={[s.chipText, on && { color: C.brand }]}>{f}</Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-      <View style={s.tip}>
-        <Text style={s.tipText}>Score = route overlap x 0.6 + time proximity x 0.4</Text>
-      </View>
-      {loadingMatches ? (
-        <View style={s.center}>
-          <ActivityIndicator size="large" color={C.brand} />
-          <Text style={s.sub}>Finding your best commute matches...</Text>
-        </View>
-      ) : shown.length === 0 ? (
-        <View style={s.card}>
-          <Text style={s.rowTitle}>No matches for these filters yet</Text>
-          <Text style={s.rowSub}>Try removing a filter or search by another neighborhood.</Text>
-        </View>
-      ) : (
-        shown.map((m, i) => {
-          const done = requested.includes(m.id);
-          return (
-            <View key={m.id} style={[s.match, i === 0 && { borderColor: C.brand }]}>
-              <View style={s.between}>
-                <Badge label={i === 0 ? 'Top Match' : 'Driving tomorrow'} tone={i === 0 ? 'brand' : 'gray'} />
-                {done ? <Badge label="Requested" tone="sky" /> : <Badge label={`${m.seats} seats`} />}
-              </View>
-              <View style={[s.row, { marginHorizontal: 0, paddingHorizontal: 0 }]}>
-                <Avatar initials={m.initials} color={m.color} size={48} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.matchName}>{m.name}</Text>
-                  <Text style={s.rowSub}>
-                    {m.role} - {m.team}
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={s.score}>{m.score}%</Text>
-                  <Text style={s.scoreLbl}>match</Text>
-                </View>
-              </View>
-              <Text style={s.rowSub}>
-                {m.time} from {m.area} - {m.eta} min est.
-              </Text>
-              <View style={s.bar}>
-                <View style={[s.fill, { width: `${m.overlap}%` }]} />
-              </View>
-              <View style={s.between}>
-                <Text style={s.micro}>Your home</Text>
-                <Text style={s.micro}>{m.overlap}% overlap</Text>
-                <Text style={s.micro}>Office</Text>
-              </View>
-              <View style={s.metrics}>
-                <View style={s.metric}>
-                  <Text style={[s.metricNum, { color: i === 1 ? C.amber : C.brand }]}>+{m.detour} min</Text>
-                  <Text style={s.metricKey}>Detour</Text>
-                </View>
-                <View style={s.metric}>
-                  <Text style={s.metricNum}>{m.time}</Text>
-                  <Text style={s.metricKey}>Departs</Text>
-                </View>
-                <View style={s.metric}>
-                  <Text style={[s.metricNum, { color: C.brand }]}>${m.cost.toFixed(2)}</Text>
-                  <Text style={s.metricKey}>Your share</Text>
-                </View>
-                <View style={s.metric}>
-                  <Text style={[s.metricNum, { color: C.sky }]}>{m.co2.toFixed(1)}kg</Text>
-                  <Text style={s.metricKey}>CO2 saved</Text>
-                </View>
-              </View>
-              <View style={s.actions}>
-                <Pressable disabled={done} style={[s.primary, done && { opacity: 0.55 }]} onPress={() => setSheet(m)}>
-                  <Text style={s.primaryText}>{done ? 'Ride Requested' : 'Request Ride'}</Text>
-                </Pressable>
-                <Pressable
-                  style={s.ghostBtnWide}
-                  onPress={() => {
-                    setChatConvId('morning');
-                    setChatSub('thread');
-                    setTab('chat');
-                  }}
-                >
-                  <Text style={s.ghostText}>Chat</Text>
-                </Pressable>
-              </View>
-            </View>
-          );
-        })
-      )}
-    </ScrollView>
-  );
-
   const tabBarHeight = 72 + insets.bottom;
 
   return (
@@ -406,9 +320,31 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
       <StatusBar style="light" />
       <View style={s.root}>
         {tab === 'home' && <Home />}
-        {tab === 'matches' && <Matches />}
+        {tab === 'matches' && (
+          <FindMatchesList
+            displayedMatches={displayedMatches}
+            shown={shown}
+            loadingMatches={loadingMatches}
+            findFocusId={findFocusId}
+            search={search}
+            setSearch={setSearch}
+            filters={filters}
+            toggleFilter={toggleFilter}
+            requested={requested}
+            setSheet={setSheet}
+            setChatConvId={setChatConvId}
+            setChatSub={setChatSub}
+            setTab={setTab}
+          />
+        )}
         {tab === 'rides' && (
-          <RidesTab bottomPadding={tabBarHeight} onPressFind={() => setTab('matches')} />
+          <RidesTab
+            bottomPadding={tabBarHeight}
+            onPressFind={() => {
+              setFindFocusId(null);
+              setTab('matches');
+            }}
+          />
         )}
         {tab === 'chat' && chatSub === 'list' && (
           <ChatList
@@ -452,6 +388,9 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
                 onPress={() => {
                   if (k === 'chat') {
                     setChatSub('list');
+                  }
+                  if (k === 'matches') {
+                    setFindFocusId(null);
                   }
                   setTab(k);
                 }}
@@ -661,6 +600,11 @@ const s = StyleSheet.create({
     borderRadius: 22,
     padding: 18,
   },
+  matchFocused: {
+    borderWidth: 2,
+    borderColor: C.brand,
+    backgroundColor: 'rgba(0,200,150,0.06)',
+  },
   between: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   matchName: { color: C.text, fontSize: 17, fontWeight: '800' },
   score: { color: C.brand, fontSize: 28, fontWeight: '800' },
@@ -794,3 +738,212 @@ const s = StyleSheet.create({
   },
   sheetVal: { color: C.text, fontSize: 13, fontWeight: '800' },
 });
+
+/** Row height hint for getItemLayout + scroll math; keep ≤ real height to avoid overscrolling. */
+const FIND_MATCH_ROW_ESTIMATE = 330;
+/** Extra pixels to subtract from target offset so the focused card sits higher (scroll feels less “deep”). */
+const FIND_FOCUS_SCROLL_BACK_PX = 128;
+
+/** Stable screen (not defined inside MainApp) so React does not remount Find on every parent render. */
+function FindMatchesList({
+  displayedMatches,
+  shown,
+  loadingMatches,
+  findFocusId,
+  search,
+  setSearch,
+  filters,
+  toggleFilter,
+  requested,
+  setSheet,
+  setChatConvId,
+  setChatSub,
+  setTab,
+}) {
+  const listRef = useRef(null);
+  const [headerHeight, setHeaderHeight] = useState(300);
+
+  const listData = loadingMatches || displayedMatches.length === 0 ? [] : displayedMatches;
+
+  const tryScrollToFocused = useCallback(() => {
+    if (!findFocusId || loadingMatches || displayedMatches.length === 0) return;
+    const index = displayedMatches.findIndex((m) => m.id === findFocusId);
+    if (index < 0) return;
+    const offset = Math.max(
+      0,
+      headerHeight + FIND_MATCH_ROW_ESTIMATE * index - FIND_FOCUS_SCROLL_BACK_PX,
+    );
+    listRef.current?.scrollToOffset({ offset, animated: true });
+  }, [findFocusId, loadingMatches, displayedMatches, headerHeight]);
+
+  useEffect(() => {
+    if (listData.length === 0) return;
+    const t = setTimeout(tryScrollToFocused, 0);
+    const t2 = setTimeout(tryScrollToFocused, 120);
+    const t3 = setTimeout(tryScrollToFocused, 450);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [listData.length, tryScrollToFocused, findFocusId, headerHeight]);
+
+  const listHeader = useMemo(
+    () => (
+      <View
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          if (h > 0) setHeaderHeight(h);
+        }}
+      >
+        <View style={s.head}>
+          <View>
+            <Text style={s.title}>Find a Ride</Text>
+            <Text style={s.sub}>Matched for tomorrow morning</Text>
+          </View>
+          <Pressable style={s.ghostBtn}>
+            <Text style={s.ghostText}>Filter</Text>
+          </Pressable>
+        </View>
+        <View style={s.search}>
+          <Text style={s.searchLbl}>Search</Text>
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Coworkers, teams, neighborhoods"
+            placeholderTextColor={C.faint}
+            style={s.input}
+          />
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
+          {FILTERS.map((f) => {
+            const on = filters.includes(f);
+            return (
+              <Pressable key={f} style={[s.chip, on && s.chipOn]} onPress={() => toggleFilter(f)}>
+                <Text style={[s.chipText, on && { color: C.brand }]}>{f}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+        <View style={s.tip}>
+          <Text style={s.tipText}>Score = route overlap x 0.6 + time proximity x 0.4</Text>
+        </View>
+        {loadingMatches ? (
+          <View style={s.center}>
+            <ActivityIndicator size="large" color={C.brand} />
+            <Text style={s.sub}>Finding your best commute matches...</Text>
+          </View>
+        ) : displayedMatches.length === 0 ? (
+          <View style={s.card}>
+            <Text style={s.rowTitle}>No matches for these filters yet</Text>
+            <Text style={s.rowSub}>Try removing a filter or search by another neighborhood.</Text>
+          </View>
+        ) : null}
+      </View>
+    ),
+    [loadingMatches, displayedMatches.length, search, filters, toggleFilter, setSearch],
+  );
+
+  const renderItem = useCallback(
+    ({ item: m, index: i }) => {
+      const done = requested.includes(m.id);
+      const focused = findFocusId === m.id;
+      const isTopMatch = m.id === shown[0]?.id;
+      return (
+        <View style={[s.match, isTopMatch && !focused && { borderColor: C.brand }, focused && s.matchFocused]}>
+          <View style={s.between}>
+            <Badge label={isTopMatch ? 'Top Match' : 'Driving tomorrow'} tone={isTopMatch ? 'brand' : 'gray'} />
+            {done ? <Badge label="Requested" tone="sky" /> : <Badge label={`${m.seats} seats`} />}
+          </View>
+          <View style={[s.row, { marginHorizontal: 0, paddingHorizontal: 0 }]}>
+            <Avatar initials={m.initials} color={m.color} size={48} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.matchName}>{m.name}</Text>
+              <Text style={s.rowSub}>
+                {m.role} - {m.team}
+              </Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={s.score}>{m.score}%</Text>
+              <Text style={s.scoreLbl}>match</Text>
+            </View>
+          </View>
+          <Text style={s.rowSub}>
+            {m.time} from {m.area} - {m.eta} min est.
+          </Text>
+          <View style={s.bar}>
+            <View style={[s.fill, { width: `${m.overlap}%` }]} />
+          </View>
+          <View style={s.between}>
+            <Text style={s.micro}>Your home</Text>
+            <Text style={s.micro}>{m.overlap}% overlap</Text>
+            <Text style={s.micro}>Office</Text>
+          </View>
+          <View style={s.metrics}>
+            <View style={s.metric}>
+              <Text style={[s.metricNum, { color: i === 1 ? C.amber : C.brand }]}>+{m.detour} min</Text>
+              <Text style={s.metricKey}>Detour</Text>
+            </View>
+            <View style={s.metric}>
+              <Text style={s.metricNum}>{m.time}</Text>
+              <Text style={s.metricKey}>Departs</Text>
+            </View>
+            <View style={s.metric}>
+              <Text style={[s.metricNum, { color: C.brand }]}>${m.cost.toFixed(2)}</Text>
+              <Text style={s.metricKey}>Your share</Text>
+            </View>
+            <View style={s.metric}>
+              <Text style={[s.metricNum, { color: C.sky }]}>{m.co2.toFixed(1)}kg</Text>
+              <Text style={s.metricKey}>CO2 saved</Text>
+            </View>
+          </View>
+          <View style={s.actions}>
+            <Pressable disabled={done} style={[s.primary, done && { opacity: 0.55 }]} onPress={() => setSheet(m)}>
+              <Text style={s.primaryText}>{done ? 'Ride Requested' : 'Request Ride'}</Text>
+            </Pressable>
+            <Pressable
+              style={s.ghostBtnWide}
+              onPress={() => {
+                setChatConvId('morning');
+                setChatSub('thread');
+                setTab('chat');
+              }}
+            >
+              <Text style={s.ghostText}>Chat</Text>
+            </Pressable>
+          </View>
+        </View>
+      );
+    },
+    [findFocusId, shown, requested, setSheet, setChatConvId, setChatSub, setTab],
+  );
+
+  return (
+    <FlatList
+      ref={listRef}
+      style={{ flex: 1 }}
+      data={listData}
+      keyExtractor={(item) => item.id}
+      extraData={`${findFocusId}-${requested.join(',')}`}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      ListHeaderComponent={listHeader}
+      renderItem={renderItem}
+      contentContainerStyle={listData.length === 0 ? [s.pad, { flexGrow: 1 }] : s.pad}
+      getItemLayout={(_, index) => ({
+        length: FIND_MATCH_ROW_ESTIMATE,
+        offset: headerHeight + FIND_MATCH_ROW_ESTIMATE * index,
+        index,
+      })}
+      onScrollToIndexFailed={({ index, averageItemLength }) => {
+        const len = averageItemLength || FIND_MATCH_ROW_ESTIMATE;
+        listRef.current?.scrollToOffset({
+          offset: Math.max(0, headerHeight + len * index - FIND_FOCUS_SCROLL_BACK_PX),
+          animated: true,
+        });
+      }}
+    />
+  );
+}
+
+export default MainApp;
