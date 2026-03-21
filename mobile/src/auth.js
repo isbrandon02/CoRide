@@ -120,6 +120,21 @@ export async function getMe(accessToken) {
 }
 
 /**
+ * Ranked coworker matches (60% route overlap + 40% time proximity on server).
+ * @returns {Promise<{ matches: Array<object>, weights: object }>}
+ */
+export async function getMatches(accessToken) {
+  const res = await apiFetch(`${API_BASE_URL}/matches`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(parseErrorDetail(data, 'Could not load matches'));
+  }
+  return data;
+}
+
+/**
  * @returns {Promise<object>} GET /profile — home, office, hobbies, route, vehicle, onboarding_completed
  */
 export async function getProfile(accessToken) {
