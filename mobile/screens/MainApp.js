@@ -41,7 +41,7 @@ const FILTERS = ['Morning', 'Afternoon', 'Evening'];
 const TAB_BAR_ITEMS = [
   { key: 'home', label: 'Home', iconOn: 'home', iconOff: 'home-outline' },
   { key: 'matches', label: 'Find', iconOn: 'search', iconOff: 'search-outline' },
-  { key: 'rides', label: 'Rides', iconOn: 'calendar', iconOff: 'calendar-outline' },
+  { key: 'rides', label: 'Activity', iconOn: 'calendar', iconOff: 'calendar-outline' },
   { key: 'chat', label: 'Chat', iconOn: 'chatbubbles', iconOff: 'chatbubbles-outline' },
   { key: 'profile', label: 'Profile', iconOn: 'person', iconOff: 'person-outline' },
 ];
@@ -124,7 +124,7 @@ function normalizeMatch(x, i) {
 }
 
 /**
- * Signed-in shell: Home (impact + schedule) / Find / Rides / Chat / Profile.
+ * Signed-in shell: Home (impact + schedule) / Find / Activity / Chat / Profile.
  */
 function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
   const insets = useSafeAreaInsets();
@@ -302,21 +302,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
           ) : null}
         </View>
       </AppPressable>
-      <View style={s.stats}>
-        <View style={s.stat}>
-          <Text style={[s.statNum, { color: C.brand }]}>${impact.saved}</Text>
-          <Text style={s.statKey}>Saved</Text>
-        </View>
-        <View style={s.stat}>
-          <Text style={[s.statNum, { color: C.sky }]}>{impact.co2}kg</Text>
-          <Text style={s.statKey}>CO2 less</Text>
-        </View>
-        <View style={s.stat}>
-          <Text style={s.statNum}>{impact.rides}</Text>
-          <Text style={s.statKey}>Rides</Text>
-        </View>
-      </View>
-      <Text style={s.section}>Top matches</Text>
+      <Text style={s.section}>Coworkers driving today</Text>
       {loadingMatches ? (
         <ActivityIndicator color={C.brand} style={s.loader} />
       ) : matches.length === 0 ? (
@@ -347,6 +333,25 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
             <Badge label={i === 0 ? 'Top' : 'View'} tone={i === 0 ? 'brand' : 'gray'} />
           </AppPressable>
         ))
+      )}
+      <Text style={s.section}>Your Impact</Text>
+      {loadingImpact ? (
+        <ActivityIndicator color={C.brand} style={{ paddingVertical: 24 }} />
+      ) : (
+        <View style={s.stats}>
+          <View style={s.stat}>
+            <Text style={[s.statNum, { color: C.brand }]}>${impact.saved}</Text>
+            <Text style={s.statKey}>Saved</Text>
+          </View>
+          <View style={s.stat}>
+            <Text style={[s.statNum, { color: C.sky }]}>{impact.co2}kg</Text>
+            <Text style={s.statKey}>CO2 less</Text>
+          </View>
+          <View style={s.stat}>
+            <Text style={s.statNum}>{impact.rides}</Text>
+            <Text style={s.statKey}>Rides</Text>
+          </View>
+        </View>
       )}
       <Text style={s.section}>This week</Text>
       <View style={s.card}>
@@ -472,7 +477,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
                 <Text style={s.sheetTitle}>Confirm ride request</Text>
                 <Text style={s.sheetBody}>
                   Send {sheet.name} a request to share a commute. After they accept, either of you can mark the
-                  ride complete under My Rides → Upcoming. That adds the estimated savings and CO₂ to both of your
+                  ride complete under Activity → Upcoming. That adds the estimated savings and CO₂ to both of your
                   Impact tabs.
                 </Text>
                 <View style={s.card}>

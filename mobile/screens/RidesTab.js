@@ -131,7 +131,7 @@ export default function RidesTab({ accessToken, bottomPadding, onPressFind, refr
     >
       <View style={styles.head}>
         <View>
-          <Text style={styles.title}>My Rides</Text>
+          <Text style={styles.title}>Activity</Text>
           <Text style={styles.sub}>Your requests · rides with you as driver</Text>
         </View>
         <AppPressable variant="ghost" style={styles.findBtn} onPress={onPressFind}>
