@@ -1,7 +1,20 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="CoRide API", version="0.1.0")
+from app.database import Base, engine, migrate_sqlite_schema
+from app.routers import auth
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    migrate_sqlite_schema()
+    yield
+
+
+app = FastAPI(title="CoRide API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -10,6 +23,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(auth.router, prefix="/auth", tags=["auth"])
 
 
 @app.get("/health")
