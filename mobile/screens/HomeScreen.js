@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,7 +9,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
-import { getMatches } from '../src/auth';
+import AppPressable from '../components/AppPressable';
+import { getImpact, getMatches } from '../src/auth';
 import ProfileSettingsScreen from './ProfileSettingsScreen';
 
 const bg = '#0B0B0C';
@@ -29,7 +29,7 @@ const TAB_DEF = [
   { key: 'home', label: 'Home', icon: 'home' },
   { key: 'find', label: 'Find', icon: 'search', badgeKey: 'find' },
   { key: 'rides', label: 'Rides', icon: 'calendar-outline' },
-  { key: 'chat', label: 'Chat', icon: 'chatbubble-outline', badge: 2 },
+  { key: 'chat', label: 'Chat', icon: 'chatbubble-outline' },
   { key: 'impact', label: 'Impact', icon: 'wallet-outline' },
   { key: 'profile', label: 'Profile', icon: 'person-outline' },
 ];
@@ -71,7 +71,7 @@ function greetingLine() {
 }
 
 export default function HomeScreen({
-  userName = 'Jamie Santos',
+  userName,
   accountEmail = null,
   accessToken,
   onLogout,
@@ -81,6 +81,7 @@ export default function HomeScreen({
   const [matches, setMatches] = useState([]);
   const [matchesLoading, setMatchesLoading] = useState(true);
   const [matchesError, setMatchesError] = useState('');
+  const [impact, setImpact] = useState({ saved: 0, co2: 0, rides: 0 });
 
   const greeting = greetingLine();
 
@@ -115,6 +116,30 @@ export default function HomeScreen({
     };
   }, [accessToken]);
 
+  useEffect(() => {
+    if (!accessToken) {
+      setImpact({ saved: 0, co2: 0, rides: 0 });
+      return;
+    }
+    let live = true;
+    getImpact(accessToken)
+      .then((d) => {
+        if (!live) return;
+        setImpact({
+          saved: Number(d.total_saved ?? d.saved ?? 0),
+          co2: Number(d.total_co2_kg ?? d.co2_saved ?? 0),
+          rides: Number(d.rides_shared ?? d.total_rides ?? 0),
+        });
+      })
+      .catch(() => {
+        if (live) setImpact({ saved: 0, co2: 0, rides: 0 });
+      });
+    return () => {
+      live = false;
+    };
+  }, [accessToken]);
+
+  const displayName = userName || 'there';
   const topMatch = matches[0];
   const topThree = matches.slice(0, 3);
   const findBadge = matches.length > 0 ? String(Math.min(matches.length, 9)) : null;
@@ -203,7 +228,7 @@ export default function HomeScreen({
             <Text style={styles.greeting}>
               {greeting} <Text style={styles.wave}>👋</Text>
             </Text>
-            <Text style={styles.userName}>{userName}</Text>
+            <Text style={styles.userName}>{displayName}</Text>
             <View style={styles.statusRow}>
               <View style={styles.statusDot} />
               <Text style={styles.statusText}>
@@ -255,15 +280,15 @@ export default function HomeScreen({
 
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: green }]}>$142</Text>
+            <Text style={[styles.statValue, { color: green }]}>${impact.saved}</Text>
             <Text style={styles.statLabel}>SAVED</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: blue }]}>47kg</Text>
+            <Text style={[styles.statValue, { color: blue }]}>{impact.co2}kg</Text>
             <Text style={styles.statLabel}>CO₂ LESS</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: '#F5F5F7' }]}>23</Text>
+            <Text style={[styles.statValue, { color: '#F5F5F7' }]}>{impact.rides}</Text>
             <Text style={styles.statLabel}>RIDES</Text>
           </View>
         </View>
@@ -296,19 +321,9 @@ export default function HomeScreen({
 
         <Text style={[styles.sectionEyebrow, { marginTop: 22 }]}>THIS WEEK</Text>
         <View style={styles.weekCard}>
-          <WeekRow day="MON" main="Solo drive" tag={{ text: 'Solo', muted: true }} />
-          <View style={styles.weekDivider} />
-          <WeekRow day="TUE" main="Alex • 8:30 AM" icon="checkmark-circle" iconColor={green} />
-          <View style={styles.weekDivider} />
-          <WeekRow day="WED" main="WFH" tag={{ text: 'Remote', muted: true }} />
-          <View style={styles.weekDivider} />
-          <WeekRow
-            day="THU"
-            main="You're driving • 2 riders"
-            tag={{ text: 'Driver', orange: true }}
-          />
-          <View style={styles.weekDivider} />
-          <WeekRow day="FRI" main="No match yet" action={{ text: 'Find' }} />
+          <Text style={styles.weekPlaceholder}>
+            Calendar sync is not connected yet. Use Find to plan rides with matched coworkers.
+          </Text>
         </View>
       </ScrollView>
 
@@ -328,41 +343,14 @@ function DriverRow({ initials: ini, color, name, detail, action }) {
         <Text style={styles.driverDetail}>{detail}</Text>
       </View>
       {action.type === 'join' ? (
-        <Pressable style={({ pressed }) => [styles.joinBtn, pressed && styles.pressed]}>
+        <AppPressable variant="ghost" style={styles.joinBtn}>
           <Text style={styles.joinText}>Join</Text>
-        </Pressable>
+        </AppPressable>
       ) : (
         <View style={styles.leftBadge}>
           <Text style={styles.leftBadgeText}>{action.text}</Text>
         </View>
       )}
-    </View>
-  );
-}
-
-function WeekRow({ day, main, tag, icon, iconColor, action }) {
-  return (
-    <View style={styles.weekRow}>
-      <Text style={styles.weekDay}>{day}</Text>
-      <View style={styles.weekMain}>
-        {icon ? (
-          <View style={styles.weekMainRow}>
-            <Ionicons name={icon} size={18} color={iconColor} style={{ marginRight: 6 }} />
-            <Text style={styles.weekMainText}>{main}</Text>
-          </View>
-        ) : (
-          <Text style={styles.weekMainText}>{main}</Text>
-        )}
-      </View>
-      {tag ? (
-        <View style={[styles.weekTag, tag.orange && styles.weekTagOrange, tag.muted && styles.weekTagMuted]}>
-          <Text style={[styles.weekTagText, tag.orange && styles.weekTagTextOrange]}>{tag.text}</Text>
-        </View>
-      ) : action ? (
-        <Pressable style={({ pressed }) => [styles.findBtn, pressed && styles.pressed]}>
-          <Text style={styles.findBtnText}>{action.text}</Text>
-        </Pressable>
-      ) : null}
     </View>
   );
 }
@@ -375,8 +363,9 @@ function BottomBar({ tab, onChange, bottomInset, findBadge }) {
         const badge =
           t.badgeKey === 'find' ? findBadge : t.badge != null ? String(t.badge) : null;
         return (
-          <Pressable
+          <AppPressable
             key={t.key}
+            variant="tab"
             style={styles.tabItem}
             onPress={() => onChange(t.key)}
           >
@@ -393,7 +382,7 @@ function BottomBar({ tab, onChange, bottomInset, findBadge }) {
               ) : null}
             </View>
             <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{t.label}</Text>
-          </Pressable>
+          </AppPressable>
         );
       })}
     </View>
@@ -598,65 +587,13 @@ const styles = StyleSheet.create({
     backgroundColor: surface,
     borderRadius: 16,
     paddingHorizontal: 16,
-    paddingVertical: 4,
+    paddingVertical: 14,
     marginBottom: 8,
   },
-  weekRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    minHeight: 48,
-  },
-  weekDay: {
-    width: 40,
-    fontSize: 12,
-    fontWeight: '700',
-    color: label,
-  },
-  weekMain: {
-    flex: 1,
-  },
-  weekMainRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  weekMainText: {
-    fontSize: 15,
-    color: '#E5E5EA',
-  },
-  weekTag: {
-    backgroundColor: surface2,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  weekTagMuted: {},
-  weekTagOrange: {
-    backgroundColor: 'rgba(251, 146, 60, 0.25)',
-  },
-  weekTagText: {
-    fontSize: 12,
-    fontWeight: '600',
+  weekPlaceholder: {
+    fontSize: 14,
     color: muted,
-  },
-  weekTagTextOrange: {
-    color: orange,
-  },
-  findBtn: {
-    borderWidth: 1,
-    borderColor: '#F5F5F7',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  findBtnText: {
-    color: '#F5F5F7',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  weekDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: surface2,
+    lineHeight: 20,
   },
   tabBar: {
     position: 'absolute',
@@ -733,9 +670,6 @@ const styles = StyleSheet.create({
     color: teal,
     fontSize: 16,
     fontWeight: '600',
-  },
-  pressed: {
-    opacity: 0.85,
   },
   findHead: {
     fontSize: 24,

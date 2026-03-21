@@ -1,19 +1,21 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   ActivityIndicator,
+  Alert,
+  FlatList,
   Modal,
-  Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
-import { API_BASE_URL } from '../src/config';
+import AppPressable from '../components/AppPressable';
+import { createRideRequest, getImpact, getMatches, getRides } from '../src/auth';
 import { ChatList, ChatThread } from './ChatTab';
 import ProfileSettingsScreen from './ProfileSettingsScreen';
 import RidesTab from './RidesTab';
@@ -32,13 +34,17 @@ const C = {
   amber: '#f5a623',
 };
 
-const MATCHES = [
-  { id: 'alex', name: 'Alex Chen', role: 'Software Engineer', team: 'Engineering', initials: 'AC', score: 94, overlap: 94, detour: 4, cost: 3.4, co2: 5.8, time: '8:30 AM', area: 'Oak St area', eta: 26, seats: 2, color: C.brand },
-  { id: 'maya', name: 'Maya Patel', role: 'Product Designer', team: 'Product', initials: 'MP', score: 78, overlap: 78, detour: 7, cost: 2.8, co2: 4.1, time: '9:00 AM', area: 'Maple Ave', eta: 31, seats: 1, color: C.amber },
-  { id: 'dan', name: 'Dan Kim', role: 'Data Analyst', team: 'Finance', initials: 'DK', score: 71, overlap: 71, detour: 2, cost: 2.2, co2: 3.6, time: '8:15 AM', area: 'Elm Blvd', eta: 29, seats: 3, color: C.sky },
+const EMPTY_IMPACT = { saved: 0, co2: 0, rides: 0, weekly: [] };
+const MATCH_COLORS = [C.brand, C.amber, C.sky];
+const FILTERS = ['Morning', 'Afternoon', 'Evening'];
+
+const TAB_BAR_ITEMS = [
+  { key: 'home', label: 'Home', iconOn: 'home', iconOff: 'home-outline' },
+  { key: 'matches', label: 'Find', iconOn: 'search', iconOff: 'search-outline' },
+  { key: 'rides', label: 'Rides', iconOn: 'calendar', iconOff: 'calendar-outline' },
+  { key: 'chat', label: 'Chat', iconOn: 'chatbubbles', iconOff: 'chatbubbles-outline' },
+  { key: 'profile', label: 'Profile', iconOn: 'person', iconOff: 'person-outline' },
 ];
-const IMPACT = { saved: 142, co2: 47, rides: 23, weekly: [{ d: 'Mon', v: 9 }, { d: 'Tue', v: 14 }, { d: 'Wed', v: 0 }, { d: 'Thu', v: 11 }, { d: 'Fri', v: 7 }, { d: 'Sat', v: 3 }, { d: 'Sun', v: 0 }] };
-const FILTERS = ['Morning', 'Has car', '<=10 min detour', '2+ seats'];
 
 const badgeTone = {
   brand: { bg: C.brandSoft, fg: C.brand },
@@ -66,128 +72,186 @@ function Avatar({ initials, color, size = 42 }) {
 
 function greetingLine() {
   const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
+  if (h < 12) return 'Good Morning';
+  if (h < 17) return 'Good Afternoon';
+  return 'Good Evening';
+}
+
+function firstLineAddress(addr) {
+  if (!addr || typeof addr !== 'string') return '';
+  const line = addr.split(',')[0].trim();
+  return line.length > 36 ? `${line.slice(0, 34)}…` : line;
 }
 
 function normalizeMatch(x, i) {
-  const base = MATCHES[i % MATCHES.length];
-  const score = x.score ?? x.match_score ?? 0.8;
+  const displayName = x.name ?? x.full_name ?? 'Member';
+  const score = x.score ?? x.match_score ?? 0;
   const overlap = x.route_overlap ?? x.overlap ?? score;
+  const timeScoreRaw = x.time_score ?? 0;
   return {
-    id: String(x.id ?? base.id),
-    name: x.name ?? x.full_name ?? base.name,
-    role: x.role ?? base.role,
-    team: x.team ?? x.department ?? base.team,
+    id: String(x.id),
+    name: displayName,
+    email: typeof x.email === 'string' ? x.email : '',
     initials:
       x.initials ??
-      (x.name ?? x.full_name ?? base.name)
+      (displayName
         .split(' ')
         .map((p) => p[0])
+        .filter(Boolean)
         .slice(0, 2)
         .join('')
-        .toUpperCase(),
+        .toUpperCase() || '?'),
     score: Math.round(score <= 1 ? score * 100 : score),
     overlap: Math.round(overlap <= 1 ? overlap * 100 : overlap),
-    detour: Math.round(x.detour_minutes ?? x.detour ?? base.detour),
-    cost: Number(x.cost_share ?? x.cost ?? base.cost),
-    co2: Number(x.co2_saved_kg ?? x.co2 ?? base.co2),
-    time: x.depart_time ?? x.departure_time ?? base.time,
-    area: x.pickup_area ?? x.neighborhood ?? base.area,
-    eta: Math.round(x.eta_minutes ?? x.eta ?? base.eta),
-    seats: Math.round(x.seats_available ?? x.seats ?? base.seats),
-    color: base.color,
+    timeScore: Math.round(timeScoreRaw <= 1 ? timeScoreRaw * 100 : timeScoreRaw),
+    time:
+      x.depart_time ??
+      x.departure_time ??
+      (x.work_schedule && typeof x.work_schedule === 'object' && x.work_schedule.start_time
+        ? String(x.work_schedule.start_time)
+        : ''),
+    area: x.pickup_area ?? x.neighborhood ?? firstLineAddress(x.home_address),
+    color: MATCH_COLORS[i % MATCH_COLORS.length],
   };
 }
 
 /**
- * Signed-in shell: Home / Find / Impact / Rides + Profile (settings).
+ * Signed-in shell: Home (impact + schedule) / Find / Rides / Chat / Profile.
  */
-export default function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
+function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState('home');
-  const [matches, setMatches] = useState(MATCHES);
-  const [impact, setImpact] = useState(IMPACT);
+  const [matches, setMatches] = useState([]);
+  const [impact, setImpact] = useState(EMPTY_IMPACT);
   const [loadingMatches, setLoadingMatches] = useState(true);
   const [loadingImpact, setLoadingImpact] = useState(true);
   const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState(['Morning']);
   const [sheet, setSheet] = useState(null);
-  const [requested, setRequested] = useState([]);
-  /** chat: inbox vs thread (demo) */
+  /** Driver user ids (string) with a pending request from you */
+  const [pendingDriverIds, setPendingDriverIds] = useState([]);
+  const [ridesRefreshKey, setRidesRefreshKey] = useState(0);
+  const [confirmLoading, setConfirmLoading] = useState(false);
   const [chatSub, setChatSub] = useState('list');
   const [chatConvId, setChatConvId] = useState('morning');
-
-  const apiBase = API_BASE_URL;
+  /** set when opening a thread from the inbox */
+  const [chatThread, setChatThread] = useState(null);
+  /** When set, Find tab scrolls to this match and highlights it (e.g. from Home). */
+  const [findFocusId, setFindFocusId] = useState(null);
+  const [filters, setFilters] = useState([]);
 
   useEffect(() => {
     let live = true;
-    fetch(`${apiBase}/matches`)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d) => {
-        const list = Array.isArray(d) ? d : d.matches;
-        if (live && Array.isArray(list) && list.length) setMatches(list.map(normalizeMatch));
-      })
-      .catch(() => null)
-      .finally(() => live && setLoadingMatches(false));
-    fetch(`${apiBase}/impact`)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d) => {
-        if (live)
-          setImpact({
-            saved: Number(d.total_saved ?? d.saved ?? IMPACT.saved),
-            co2: Number(d.total_co2_kg ?? d.co2_saved ?? IMPACT.co2),
-            rides: Number(d.rides_shared ?? d.total_rides ?? IMPACT.rides),
-            weekly:
-              Array.isArray(d.weekly) && d.weekly.length
-                ? d.weekly.map((x) => ({ d: x.day ?? x.d, v: x.value ?? x.v }))
-                : IMPACT.weekly,
-          });
-      })
-      .catch(() => null)
-      .finally(() => live && setLoadingImpact(false));
+    if (!accessToken) {
+      setLoadingMatches(false);
+      return () => {
+        live = false;
+      };
+    }
+    (async () => {
+      try {
+        const [matchData, ridesData] = await Promise.all([
+          getMatches(accessToken),
+          getRides(accessToken).catch(() => ({ rides: [] })),
+        ]);
+        if (!live) return;
+        const list = matchData.matches ?? [];
+        setMatches(Array.isArray(list) ? list.map(normalizeMatch) : []);
+        const pending = (ridesData.rides ?? [])
+          .filter((r) => r.role === 'requester' && r.status === 'pending')
+          .map((r) => String(r.other_user.id));
+        setPendingDriverIds(pending);
+      } catch {
+        setMatches([]);
+      } finally {
+        if (live) setLoadingMatches(false);
+      }
+    })();
     return () => {
       live = false;
     };
-  }, [apiBase]);
+  }, [accessToken, ridesRefreshKey]);
 
-  const shown = useMemo(
-    () =>
-      matches.filter((m) => {
-        const q = search.trim().toLowerCase();
-        const passQ = !q || [m.name, m.team, m.area].some((v) => v.toLowerCase().includes(q));
-        const passF = filters.every((f) =>
-          f === 'Morning'
-            ? /AM/i.test(m.time)
-            : f === '<=10 min detour'
-              ? m.detour <= 10
-              : f === '2+ seats'
-                ? m.seats >= 2
-                : true,
-        );
-        return passQ && passF;
-      }),
-    [matches, search, filters],
-  );
+  useEffect(() => {
+    let live = true;
+    if (!accessToken) {
+      setLoadingImpact(false);
+      return () => {
+        live = false;
+      };
+    }
+    setLoadingImpact(true);
+    getImpact(accessToken)
+      .then((d) => {
+        if (!live) return;
+        setImpact({
+          saved: Number(d.total_saved ?? d.saved ?? 0),
+          co2: Number(d.total_co2_kg ?? d.co2_saved ?? 0),
+          rides: Number(d.rides_shared ?? d.total_rides ?? 0),
+          weekly:
+            Array.isArray(d.weekly) && d.weekly.length
+              ? d.weekly.map((x) => ({ d: x.day ?? x.d, v: x.value ?? x.v }))
+              : [],
+        });
+      })
+      .catch(() => {
+        if (live) setImpact(EMPTY_IMPACT);
+      })
+      .finally(() => {
+        if (live) setLoadingImpact(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [accessToken, ridesRefreshKey]);
+
+  const shown = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return matches;
+    return matches.filter((m) =>
+      [m.name, m.email, m.area].some((v) => String(v || '').toLowerCase().includes(q)),
+    );
+  }, [matches, search]);
+
+  const displayedMatches = useMemo(() => {
+    if (!findFocusId) return shown;
+    const focus = matches.find((m) => m.id === findFocusId);
+    if (!focus || shown.some((m) => m.id === findFocusId)) return shown;
+    return [focus, ...shown.filter((m) => m.id !== findFocusId)];
+  }, [shown, matches, findFocusId]);
+
+  useEffect(() => {
+    if (tab !== 'matches' || !findFocusId) return;
+    const t = setTimeout(() => setFindFocusId(null), 3500);
+    return () => clearTimeout(t);
+  }, [tab, findFocusId]);
 
   const top = shown[0] ?? matches[0];
-  const commute = requested.length ? matches.find((m) => m.id === requested[0]) ?? top : top;
-  const week = [
-    ['MON', 'Solo drive', 'Solo'],
-    ['TUE', 'Alex - 8:30 AM', 'Confirmed'],
-    ['WED', 'WFH', 'Remote'],
-    ['THU', "You're driving - 2 riders", 'Driver'],
-    ['FRI', 'No match yet', 'Find'],
-  ];
+  const commute = pendingDriverIds.length ? matches.find((m) => pendingDriverIds.includes(m.id)) ?? top : top;
 
-  const toggleFilter = (f) =>
-    setFilters((cur) => (cur.includes(f) ? cur.filter((x) => x !== f) : [...cur, f]));
-  const confirm = () => {
-    if (!sheet) return;
-    setRequested((cur) => (cur.includes(sheet.id) ? cur : [sheet.id, ...cur]));
-    setSheet(null);
-    setTab('home');
+  const toggleFilter = useCallback(
+    (f) => setFilters((cur) => (cur.includes(f) ? cur.filter((x) => x !== f) : [...cur, f])),
+    [],
+  );
+
+  const confirm = async () => {
+    if (!sheet || !accessToken) return;
+    const driverId = Number(sheet.id);
+    if (!Number.isFinite(driverId)) {
+      Alert.alert('Request failed', 'Invalid match.');
+      return;
+    }
+    setConfirmLoading(true);
+    try {
+      await createRideRequest(accessToken, { driver_id: driverId });
+      setPendingDriverIds((cur) => (cur.includes(sheet.id) ? cur : [sheet.id, ...cur]));
+      setRidesRefreshKey((k) => k + 1);
+      setSheet(null);
+      setTab('home');
+    } catch (e) {
+      Alert.alert('Request failed', e instanceof Error ? e.message : String(e));
+    } finally {
+      setConfirmLoading(false);
+    }
   };
 
   const name = displayName || 'there';
@@ -198,30 +262,38 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
       <View style={s.hero}>
         <Text style={s.smallMuted}>{greet}</Text>
         <Text style={s.title}>{name}</Text>
-        <Text style={s.sub}>{matches.slice(0, 3).length} coworkers are driving your route today</Text>
+        <Text style={s.sub}>
+          {matches.length === 0
+            ? 'No route matches yet — open Find when coworkers are onboarded'
+            : `${Math.min(matches.length, 3)} coworker${matches.length === 1 ? '' : 's'} on your route`}
+        </Text>
       </View>
-      <Pressable style={s.alert} onPress={() => setTab('matches')}>
-        <Text style={s.alertOver}>{requested.length ? 'Ride requested' : "Today's commute"}</Text>
+      <AppPressable
+        variant="solid"
+        style={s.alert}
+        onPress={() => setTab('matches')}
+        android_ripple={{ color: 'rgba(0,0,0,0.14)' }}
+      >
+        <Text style={s.alertOver}>{pendingDriverIds.length ? 'Ride requested' : "Today's commute"}</Text>
         <Text style={s.alertTitle}>
-          {commute ? `${requested.length ? 'Waiting on' : 'Best match:'} ${commute.name}` : 'No ride lined up yet'}
+          {commute ? `${pendingDriverIds.length ? 'Waiting on' : 'Best match:'} ${commute.name}` : 'No ride lined up yet'}
         </Text>
         <Text style={s.alertSub}>
           {commute
-            ? `${commute.time} - ${commute.area} - ${commute.seats} seats open`
-            : 'Open Find to request tomorrow morning'}
+            ? [commute.time, commute.area].filter(Boolean).join(' · ') || 'Carpool match from your profile'
+            : 'Open Find to request a ride'}
         </Text>
         <View style={s.rowWrap}>
           <View style={s.pill}>
-            <Text style={s.pillText}>{requested.length ? 'Pending confirmation' : `${commute?.score ?? 0}% match`}</Text>
+            <Text style={s.pillText}>{pendingDriverIds.length ? 'Pending confirmation' : `${commute?.score ?? 0}% match`}</Text>
           </View>
-          <View style={s.pill}>
-            <Text style={s.pillText}>${(commute?.cost ?? 0).toFixed(2)} share</Text>
-          </View>
-          <View style={s.pill}>
-            <Text style={s.pillText}>{commute?.eta ?? 0} min est.</Text>
-          </View>
+          {commute ? (
+            <View style={s.pill}>
+              <Text style={s.pillText}>Route {commute.overlap}%</Text>
+            </View>
+          ) : null}
         </View>
-      </Pressable>
+      </AppPressable>
       <View style={s.stats}>
         <View style={s.stat}>
           <Text style={[s.statNum, { color: C.brand }]}>${impact.saved}</Text>
@@ -236,229 +308,109 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
           <Text style={s.statKey}>Rides</Text>
         </View>
       </View>
-      <Text style={s.section}>Coworkers Driving Today</Text>
+      <Text style={s.section}>Top matches</Text>
       {loadingMatches ? (
         <ActivityIndicator color={C.brand} style={s.loader} />
+      ) : matches.length === 0 ? (
+        <View style={s.card}>
+          <Text style={s.rowTitle}>No matches yet</Text>
+          <Text style={s.rowSub}>Complete onboarding and wait for coworkers on similar routes.</Text>
+        </View>
       ) : (
         matches.slice(0, 3).map((m, i) => (
-          <Pressable key={m.id} style={s.row} onPress={() => setTab('matches')}>
+          <AppPressable
+            key={m.id}
+            variant="default"
+            style={s.row}
+            onPress={() => {
+              setFindFocusId(m.id);
+              setTab('matches');
+            }}
+            android_ripple={{ color: 'rgba(255,255,255,0.1)' }}
+          >
             <Avatar initials={m.initials} color={m.color} />
             <View style={{ flex: 1 }}>
               <Text style={s.rowTitle}>{m.name}</Text>
               <Text style={s.rowSub}>
-                {m.time} - {m.seats} seats - {m.area} - +{m.detour} min
+                {m.score}% match · Route {m.overlap}% · Time {m.timeScore}%
+                {m.area ? ` · ${m.area}` : ''}
               </Text>
             </View>
-            <Badge label={i === 1 ? '1 left' : 'Join'} tone={i === 1 ? 'sky' : 'brand'} />
-          </Pressable>
+            <Badge label={i === 0 ? 'Top' : 'View'} tone={i === 0 ? 'brand' : 'gray'} />
+          </AppPressable>
         ))
       )}
-      <Text style={s.section}>This Week</Text>
+      <Text style={s.section}>This week</Text>
       <View style={s.card}>
-        {week.map(([d, detail, b]) => (
-          <View key={d} style={s.weekRow}>
-            <Text style={[s.weekDay, d === 'TUE' && { color: C.brand }]}>{d}</Text>
-            <Text style={[s.weekText, (b === 'Solo' || b === 'Remote') && { color: C.muted }]}>{detail}</Text>
-            {b === 'Find' ? (
-              <Pressable style={s.ghostBtn} onPress={() => setTab('matches')}>
-                <Text style={s.ghostText}>Find</Text>
-              </Pressable>
-            ) : (
-              <Badge label={b} tone={b === 'Confirmed' ? 'brand' : b === 'Driver' ? 'amber' : 'gray'} />
-            )}
-          </View>
-        ))}
+        <Text style={s.rowSub}>
+          Calendar sync is not connected yet. Use Find to plan rides with matched coworkers.
+        </Text>
+        <AppPressable
+          variant="ghost"
+          style={[s.ghostBtn, { alignSelf: 'flex-start', marginTop: 12 }]}
+          onPress={() => setTab('matches')}
+        >
+          <Text style={s.ghostText}>Open Find</Text>
+        </AppPressable>
       </View>
     </ScrollView>
   );
 
-  const Matches = () => (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.pad}>
-      <View style={s.head}>
-        <View>
-          <Text style={s.title}>Find a Ride</Text>
-          <Text style={s.sub}>Matched for tomorrow morning</Text>
-        </View>
-        <Pressable style={s.ghostBtn}>
-          <Text style={s.ghostText}>Filter</Text>
-        </Pressable>
-      </View>
-      <View style={s.search}>
-        <Text style={s.searchLbl}>Search</Text>
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Coworkers, teams, neighborhoods"
-          placeholderTextColor={C.faint}
-          style={s.input}
-        />
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
-        {FILTERS.map((f) => {
-          const on = filters.includes(f);
-          return (
-            <Pressable key={f} style={[s.chip, on && s.chipOn]} onPress={() => toggleFilter(f)}>
-              <Text style={[s.chipText, on && { color: C.brand }]}>{f}</Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-      <View style={s.tip}>
-        <Text style={s.tipText}>Score = route overlap x 0.6 + time proximity x 0.4</Text>
-      </View>
-      {loadingMatches ? (
-        <View style={s.center}>
-          <ActivityIndicator size="large" color={C.brand} />
-          <Text style={s.sub}>Finding your best commute matches...</Text>
-        </View>
-      ) : shown.length === 0 ? (
-        <View style={s.card}>
-          <Text style={s.rowTitle}>No matches for these filters yet</Text>
-          <Text style={s.rowSub}>Try removing a filter or search by another neighborhood.</Text>
-        </View>
-      ) : (
-        shown.map((m, i) => {
-          const done = requested.includes(m.id);
-          return (
-            <View key={m.id} style={[s.match, i === 0 && { borderColor: C.brand }]}>
-              <View style={s.between}>
-                <Badge label={i === 0 ? 'Top Match' : 'Driving tomorrow'} tone={i === 0 ? 'brand' : 'gray'} />
-                {done ? <Badge label="Requested" tone="sky" /> : <Badge label={`${m.seats} seats`} />}
-              </View>
-              <View style={[s.row, { marginHorizontal: 0, paddingHorizontal: 0 }]}>
-                <Avatar initials={m.initials} color={m.color} size={48} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.matchName}>{m.name}</Text>
-                  <Text style={s.rowSub}>
-                    {m.role} - {m.team}
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={s.score}>{m.score}%</Text>
-                  <Text style={s.scoreLbl}>match</Text>
-                </View>
-              </View>
-              <Text style={s.rowSub}>
-                {m.time} from {m.area} - {m.eta} min est.
-              </Text>
-              <View style={s.bar}>
-                <View style={[s.fill, { width: `${m.overlap}%` }]} />
-              </View>
-              <View style={s.between}>
-                <Text style={s.micro}>Your home</Text>
-                <Text style={s.micro}>{m.overlap}% overlap</Text>
-                <Text style={s.micro}>Office</Text>
-              </View>
-              <View style={s.metrics}>
-                <View style={s.metric}>
-                  <Text style={[s.metricNum, { color: i === 1 ? C.amber : C.brand }]}>+{m.detour} min</Text>
-                  <Text style={s.metricKey}>Detour</Text>
-                </View>
-                <View style={s.metric}>
-                  <Text style={s.metricNum}>{m.time}</Text>
-                  <Text style={s.metricKey}>Departs</Text>
-                </View>
-                <View style={s.metric}>
-                  <Text style={[s.metricNum, { color: C.brand }]}>${m.cost.toFixed(2)}</Text>
-                  <Text style={s.metricKey}>Your share</Text>
-                </View>
-                <View style={s.metric}>
-                  <Text style={[s.metricNum, { color: C.sky }]}>{m.co2.toFixed(1)}kg</Text>
-                  <Text style={s.metricKey}>CO2 saved</Text>
-                </View>
-              </View>
-              <View style={s.actions}>
-                <Pressable disabled={done} style={[s.primary, done && { opacity: 0.55 }]} onPress={() => setSheet(m)}>
-                  <Text style={s.primaryText}>{done ? 'Ride Requested' : 'Request Ride'}</Text>
-                </Pressable>
-                <Pressable
-                  style={s.ghostBtnWide}
-                  onPress={() => {
-                    setChatConvId('morning');
-                    setChatSub('thread');
-                    setTab('chat');
-                  }}
-                >
-                  <Text style={s.ghostText}>Chat</Text>
-                </Pressable>
-              </View>
-            </View>
-          );
-        })
-      )}
-    </ScrollView>
-  );
-
-  const Impact = () => {
-    const max = Math.max(...impact.weekly.map((x) => x.v), 1);
-    return (
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.pad}>
-        <View style={s.head}>
-          <View>
-            <Text style={s.title}>My Impact</Text>
-            <Text style={s.sub}>Savings and CO2 avoided</Text>
-          </View>
-        </View>
-        <View style={s.impactHero}>
-          <Text style={s.sub}>Total gas money saved</Text>
-          <Text style={s.heroNum}>${impact.saved}</Text>
-          <View style={s.statsMini}>
-            <View style={{ alignItems: 'center' }}>
-              <Text style={[s.statNum, { color: C.sky }]}>{impact.co2}kg</Text>
-              <Text style={s.statKey}>CO2 avoided</Text>
-            </View>
-            <View style={{ alignItems: 'center' }}>
-              <Text style={s.statNum}>{impact.rides}</Text>
-              <Text style={s.statKey}>Rides shared</Text>
-            </View>
-          </View>
-        </View>
-        <Text style={s.section}>Weekly Savings</Text>
-        <View style={s.card}>
-          {loadingImpact ? (
-            <ActivityIndicator color={C.brand} style={s.loader} />
-          ) : (
-            impact.weekly.map((x) => (
-              <View key={x.d} style={s.barRow}>
-                <Text style={s.barDay}>{x.d}</Text>
-                <View style={s.barTrack}>
-                  <View style={[s.fill, { width: `${(x.v / max) * 100}%` }]} />
-                </View>
-                <Text style={s.barVal}>${x.v}</Text>
-              </View>
-            ))
-          )}
-        </View>
-      </ScrollView>
-    );
-  };
-
-  const tabBarHeight = 72 + insets.bottom;
+  const tabBarBottomPad = Math.max(insets.bottom, 8);
+  const tabBarHeight = 58 + tabBarBottomPad;
 
   return (
-    <SafeAreaView style={s.safe}>
+    <SafeAreaView style={s.safe} edges={['top', 'left', 'right']}>
       <StatusBar style="light" />
       <View style={s.root}>
         {tab === 'home' && <Home />}
-        {tab === 'matches' && <Matches />}
-        {tab === 'impact' && <Impact />}
+        {tab === 'matches' && (
+          <FindMatchesList
+            displayedMatches={displayedMatches}
+            shown={shown}
+            loadingMatches={loadingMatches}
+            findFocusId={findFocusId}
+            search={search}
+            setSearch={setSearch}
+            filters={filters}
+            toggleFilter={toggleFilter}
+            pendingDriverIds={pendingDriverIds}
+            setSheet={setSheet}
+            setChatConvId={setChatConvId}
+            setChatSub={setChatSub}
+            setTab={setTab}
+          />
+        )}
         {tab === 'rides' && (
-          <RidesTab bottomPadding={tabBarHeight} onPressFind={() => setTab('matches')} />
+          <RidesTab
+            accessToken={accessToken}
+            bottomPadding={tabBarHeight}
+            refreshKey={ridesRefreshKey}
+            onPressFind={() => {
+              setFindFocusId(null);
+              setTab('matches');
+            }}
+            onRidesMutated={() => setRidesRefreshKey((k) => k + 1)}
+          />
         )}
         {tab === 'chat' && chatSub === 'list' && (
           <ChatList
             bottomPadding={tabBarHeight}
-            onOpenThread={(id) => {
-              setChatConvId(id);
+            onOpenThread={(c) => {
+              setChatThread({ id: c.id, title: c.title });
               setChatSub('thread');
             }}
           />
         )}
-        {tab === 'chat' && chatSub === 'thread' && (
+        {tab === 'chat' && chatSub === 'thread' && chatThread != null && (
           <ChatThread
-            conversationId={chatConvId}
+            conversationId={chatThread.id}
+            threadTitle={chatThread.title}
             bottomPadding={tabBarHeight}
-            onBack={() => setChatSub('list')}
+            onBack={() => {
+              setChatSub('list');
+              setChatThread(null);
+            }}
           />
         )}
         {tab === 'profile' && (
@@ -471,63 +423,79 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
             />
           </View>
         )}
-        <View style={[s.tabs, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-          {[
-            ['home', 'Home'],
-            ['matches', 'Find'],
-            ['impact', 'Impact'],
-            ['rides', 'Rides'],
-            ['chat', 'Chat'],
-            ['profile', 'Profile'],
-          ].map(([k, l]) => {
+        <View style={[s.tabs, { paddingBottom: tabBarBottomPad }]}>
+          {TAB_BAR_ITEMS.map(({ key: k, label: l, iconOn, iconOff }) => {
             const on = tab === k;
             return (
-              <Pressable
+              <AppPressable
                 key={k}
+                variant="tab"
                 style={[s.tab, on && s.tabOn]}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={l}
                 onPress={() => {
                   if (k === 'chat') {
                     setChatSub('list');
+                    setChatThread(null);
+                  }
+                  if (k === 'matches') {
+                    setFindFocusId(null);
                   }
                   setTab(k);
                 }}
               >
-                <Text style={[s.tabText, on && { color: C.brand }]}>{l}</Text>
-              </Pressable>
+                <View style={s.tabInner}>
+                  <Ionicons name={on ? iconOn : iconOff} size={22} color={on ? C.brand : C.faint} />
+                  <Text style={[s.tabText, on && { color: C.brand }]}>{l}</Text>
+                </View>
+              </AppPressable>
             );
           })}
         </View>
       </View>
       <Modal visible={!!sheet} transparent animationType="slide" onRequestClose={() => setSheet(null)}>
         <View style={s.backdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setSheet(null)} />
+          <AppPressable variant="none" style={StyleSheet.absoluteFill} onPress={() => setSheet(null)} />
           <View style={s.sheet}>
             <View style={s.handle} />
             {sheet && (
               <>
                 <Text style={s.sheetTitle}>Confirm ride request</Text>
                 <Text style={s.sheetBody}>
-                  Send a request to {sheet.name} for the {sheet.time} commute from {sheet.area}.
+                  Send {sheet.name} a request to share a commute. After they accept, either of you can mark the
+                  ride complete under My Rides → Upcoming. That adds the estimated savings and CO₂ to both of your
+                  Impact tabs.
                 </Text>
                 <View style={s.card}>
                   {[
                     ['Match score', `${sheet.score}%`],
-                    ['Detour', `+${sheet.detour} min`],
-                    ['Estimated share', `$${sheet.cost.toFixed(2)}`],
-                    ['CO2 saved', `${sheet.co2.toFixed(1)}kg`],
+                    ['Route overlap', `${sheet.overlap}%`],
+                    ['Time fit', `${sheet.timeScore}%`],
                   ].map(([rowLabel, v], idx) => (
-                    <View key={String(rowLabel)} style={[s.sheetRow, idx === 3 && { borderBottomWidth: 0 }]}>
+                    <View key={String(rowLabel)} style={[s.sheetRow, idx === 2 && { borderBottomWidth: 0 }]}>
                       <Text style={s.rowSub}>{rowLabel}</Text>
                       <Text style={s.sheetVal}>{v}</Text>
                     </View>
                   ))}
                 </View>
-                <Pressable style={s.primary} onPress={confirm}>
-                  <Text style={s.primaryText}>Confirm request</Text>
-                </Pressable>
-                <Pressable style={{ alignItems: 'center', paddingVertical: 14 }} onPress={() => setSheet(null)}>
+                <AppPressable
+                  variant="primary"
+                  style={[s.sheetConfirmBtn, confirmLoading && { opacity: 0.65 }]}
+                  onPress={confirm}
+                  disabled={confirmLoading}
+                  accessibilityRole="button"
+                  accessibilityLabel={confirmLoading ? 'Sending request' : 'Confirm ride request'}
+                >
+                  <Text style={s.sheetConfirmText}>{confirmLoading ? 'Sending…' : 'Confirm request'}</Text>
+                </AppPressable>
+                <AppPressable
+                  variant="link"
+                  style={{ alignItems: 'center', paddingVertical: 14 }}
+                  onPress={() => setSheet(null)}
+                >
                   <Text style={s.sub}>Cancel</Text>
-                </Pressable>
+                </AppPressable>
               </>
             )}
           </View>
@@ -543,6 +511,14 @@ const s = StyleSheet.create({
   profileWrap: { flex: 1 },
   pad: { paddingBottom: 112 },
   hero: { padding: 20, backgroundColor: C.card },
+  /** Greeting + name: same size/weight as former "Good Evening" line */
+  heroHeadline: {
+    color: C.text,
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 26,
+    marginBottom: 6,
+  },
   smallMuted: { color: C.muted, fontSize: 14 },
   title: { color: C.text, fontSize: 28, fontWeight: '800', marginTop: 2 },
   sub: { color: C.muted, fontSize: 13, marginTop: 6 },
@@ -569,6 +545,7 @@ const s = StyleSheet.create({
     backgroundColor: C.brand,
     borderRadius: 22,
     padding: 18,
+    overflow: 'hidden',
   },
   alertOver: { color: 'rgba(0,0,0,0.55)', fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
   alertTitle: { color: '#021b14', fontSize: 21, fontWeight: '800', marginTop: 6 },
@@ -596,6 +573,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     marginHorizontal: 8,
     borderRadius: 18,
+    overflow: 'hidden',
   },
   rowTitle: { color: C.text, fontSize: 15, fontWeight: '700' },
   rowSub: { color: C.muted, fontSize: 12, marginTop: 4 },
@@ -628,6 +606,7 @@ const s = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
+    overflow: 'hidden',
   },
   ghostBtnWide: {
     minWidth: 74,
@@ -646,6 +625,7 @@ const s = StyleSheet.create({
     gap: 10,
     marginHorizontal: 16,
     marginTop: 14,
+    marginBottom: 16,
     backgroundColor: C.card,
     borderWidth: 1,
     borderColor: C.line,
@@ -689,8 +669,14 @@ const s = StyleSheet.create({
     borderRadius: 22,
     padding: 18,
   },
+  matchFocused: {
+    borderWidth: 2,
+    borderColor: C.brand,
+    backgroundColor: 'rgba(0,200,150,0.06)',
+  },
   between: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   matchName: { color: C.text, fontSize: 17, fontWeight: '800' },
+  matchEmail: { color: C.faint, fontSize: 11, marginTop: 4 },
   score: { color: C.brand, fontSize: 28, fontWeight: '800' },
   scoreLbl: { color: C.faint, fontSize: 10, textTransform: 'uppercase', fontWeight: '700' },
   bar: {
@@ -720,12 +706,36 @@ const s = StyleSheet.create({
     backgroundColor: C.brand,
     borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 14,
+    paddingHorizontal: 10,
+    minHeight: 48,
   },
-  primaryText: { color: '#021b14', fontSize: 14, fontWeight: '800' },
+  /** Light text on brand green — dark text was hard to see on some devices */
+  primaryText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  sheetConfirmBtn: {
+    marginTop: 18,
+    backgroundColor: C.brand,
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'stretch',
+  },
+  sheetConfirmText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
   impactHero: {
     marginHorizontal: 16,
-    marginTop: 14,
+    marginTop: 0,
     backgroundColor: C.brandSoft,
     borderWidth: 1,
     borderColor: C.brand,
@@ -743,16 +753,6 @@ const s = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: C.line,
   },
-  barRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
-  barDay: { width: 34, color: C.faint, fontSize: 12 },
-  barTrack: {
-    flex: 1,
-    height: 8,
-    borderRadius: 99,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    overflow: 'hidden',
-  },
-  barVal: { width: 36, textAlign: 'right', color: C.text, fontSize: 12, fontWeight: '700' },
   placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
   subCenter: { color: C.muted, fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 10 },
   tabs: {
@@ -767,9 +767,10 @@ const s = StyleSheet.create({
     borderTopColor: C.line,
     paddingTop: 10,
   },
-  tab: { borderRadius: 14, paddingHorizontal: 10, paddingVertical: 8 },
+  tab: { borderRadius: 14, paddingHorizontal: 6, paddingVertical: 6, minWidth: 56 },
   tabOn: { backgroundColor: C.brandSoft },
-  tabText: { color: C.faint, fontSize: 11, fontWeight: '700' },
+  tabInner: { alignItems: 'center', justifyContent: 'center', gap: 3 },
+  tabText: { color: C.faint, fontSize: 10, fontWeight: '700' },
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
     backgroundColor: C.panel,
@@ -800,3 +801,223 @@ const s = StyleSheet.create({
   },
   sheetVal: { color: C.text, fontSize: 13, fontWeight: '800' },
 });
+
+/** Row height hint for getItemLayout + scroll math; keep ≤ real height to avoid overscrolling. */
+const FIND_MATCH_ROW_ESTIMATE = 330;
+/** Extra pixels to subtract from target offset so the focused card sits higher (scroll feels less “deep”). */
+const FIND_FOCUS_SCROLL_BACK_PX = 128;
+
+/** Stable screen (not defined inside MainApp) so React does not remount Find on every parent render. */
+function FindMatchesList({
+  displayedMatches,
+  shown,
+  loadingMatches,
+  findFocusId,
+  search,
+  setSearch,
+  filters,
+  toggleFilter,
+  pendingDriverIds,
+  setSheet,
+  setChatConvId,
+  setChatSub,
+  setTab,
+}) {
+  const listRef = useRef(null);
+  const [headerHeight, setHeaderHeight] = useState(300);
+
+  const listData = loadingMatches || displayedMatches.length === 0 ? [] : displayedMatches;
+
+  const tryScrollToFocused = useCallback(() => {
+    if (!findFocusId || loadingMatches || displayedMatches.length === 0) return;
+    const index = displayedMatches.findIndex((m) => m.id === findFocusId);
+    if (index < 0) return;
+    const offset = Math.max(
+      0,
+      headerHeight + FIND_MATCH_ROW_ESTIMATE * index - FIND_FOCUS_SCROLL_BACK_PX,
+    );
+    listRef.current?.scrollToOffset({ offset, animated: true });
+  }, [findFocusId, loadingMatches, displayedMatches, headerHeight]);
+
+  useEffect(() => {
+    if (listData.length === 0) return;
+    const t = setTimeout(tryScrollToFocused, 0);
+    const t2 = setTimeout(tryScrollToFocused, 120);
+    const t3 = setTimeout(tryScrollToFocused, 450);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [listData.length, tryScrollToFocused, findFocusId, headerHeight]);
+
+  const listHeader = useMemo(
+    () => (
+      <View
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          if (h > 0) setHeaderHeight(h);
+        }}
+      >
+        <View style={s.head}>
+          <View>
+            <Text style={s.title}>Find a Ride</Text>
+            <Text style={s.sub}>Matched for tomorrow morning</Text>
+          </View>
+          <AppPressable variant="ghost" style={s.ghostBtn}>
+            <Text style={s.ghostText}>Filter</Text>
+          </AppPressable>
+        </View>
+        <View style={s.search}>
+          <Text style={s.searchLbl}>Search</Text>
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Coworkers, teams, neighborhoods"
+            placeholderTextColor={C.faint}
+            style={s.input}
+          />
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
+          {FILTERS.map((f) => {
+            const on = filters.includes(f);
+            return (
+              <AppPressable
+                key={f}
+                variant="chip"
+                style={[s.chip, on && s.chipOn]}
+                onPress={() => toggleFilter(f)}
+              >
+                <Text style={[s.chipText, on && { color: C.brand }]}>{f}</Text>
+              </AppPressable>
+            );
+          })}
+        </ScrollView>
+        <View style={s.tip}>
+          <Text style={s.tipText}>Score = route overlap x 0.6 + time proximity x 0.4</Text>
+        </View>
+        {loadingMatches ? (
+          <View style={s.center}>
+            <ActivityIndicator size="large" color={C.brand} />
+            <Text style={s.sub}>Finding your best commute matches...</Text>
+          </View>
+        ) : displayedMatches.length === 0 ? (
+          <View style={s.card}>
+            <Text style={s.rowTitle}>No matches for these filters yet</Text>
+            <Text style={s.rowSub}>Try removing a filter or search by another neighborhood.</Text>
+          </View>
+        ) : null}
+      </View>
+    ),
+    [loadingMatches, displayedMatches.length, search, filters, toggleFilter, setSearch],
+  );
+
+  const renderItem = useCallback(
+    ({ item: m, index: i }) => {
+      const done = pendingDriverIds.includes(m.id);
+      const focused = findFocusId === m.id;
+      const isTopMatch = m.id === shown[0]?.id;
+      return (
+        <View style={[s.match, isTopMatch && !focused && { borderColor: C.brand }, focused && s.matchFocused]}>
+          <View style={s.between}>
+            <Badge label={isTopMatch ? 'Top Match' : 'Driving tomorrow'} tone={isTopMatch ? 'brand' : 'gray'} />
+            {done ? <Badge label="Requested" tone="sky" /> : <Badge label={`${m.seats} seats`} />}
+          </View>
+          <View style={[s.row, { marginHorizontal: 0, paddingHorizontal: 0 }]}>
+            <Avatar initials={m.initials} color={m.color} size={48} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.matchName}>{m.name}</Text>
+              <Text style={s.rowSub}>
+                {m.role} - {m.team}
+              </Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={s.score}>{m.score}%</Text>
+              <Text style={s.scoreLbl}>match</Text>
+            </View>
+          </View>
+          <Text style={s.rowSub}>
+            {m.time} from {m.area} - {m.eta} min est.
+          </Text>
+          <View style={s.bar}>
+            <View style={[s.fill, { width: `${m.overlap}%` }]} />
+          </View>
+          <View style={s.between}>
+            <Text style={s.micro}>Your home</Text>
+            <Text style={s.micro}>{m.overlap}% overlap</Text>
+            <Text style={s.micro}>Office</Text>
+          </View>
+          <View style={s.metrics}>
+            <View style={s.metric}>
+              <Text style={[s.metricNum, { color: i === 1 ? C.amber : C.brand }]}>+{m.detour} min</Text>
+              <Text style={s.metricKey}>Detour</Text>
+            </View>
+            <View style={s.metric}>
+              <Text style={s.metricNum}>{m.time}</Text>
+              <Text style={s.metricKey}>Departs</Text>
+            </View>
+            <View style={s.metric}>
+              <Text style={[s.metricNum, { color: C.brand }]}>${m.cost.toFixed(2)}</Text>
+              <Text style={s.metricKey}>Your share</Text>
+            </View>
+            <View style={s.metric}>
+              <Text style={[s.metricNum, { color: C.sky }]}>{m.co2.toFixed(1)}kg</Text>
+              <Text style={s.metricKey}>CO2 saved</Text>
+            </View>
+          </View>
+          <View style={s.actions}>
+            <AppPressable
+              variant="primary"
+              disabled={done}
+              style={[s.primary, done && { opacity: 0.55 }]}
+              onPress={() => setSheet(m)}
+            >
+              <Text style={s.primaryText}>{done ? 'Ride Requested' : 'Request Ride'}</Text>
+            </AppPressable>
+            <AppPressable
+              variant="ghost"
+              style={s.ghostBtnWide}
+              onPress={() => {
+                setChatConvId('morning');
+                setChatSub('thread');
+                setTab('chat');
+              }}
+            >
+              <Text style={s.ghostText}>Chat</Text>
+            </AppPressable>
+          </View>
+        </View>
+      );
+    },
+    [findFocusId, shown, pendingDriverIds, setSheet, setChatConvId, setChatSub, setTab],
+  );
+
+  return (
+    <FlatList
+      ref={listRef}
+      style={{ flex: 1 }}
+      data={listData}
+      keyExtractor={(item) => item.id}
+      extraData={`${findFocusId}-${pendingDriverIds.join(',')}`}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      ListHeaderComponent={listHeader}
+      renderItem={renderItem}
+      contentContainerStyle={listData.length === 0 ? [s.pad, { flexGrow: 1 }] : s.pad}
+      getItemLayout={(_, index) => ({
+        length: FIND_MATCH_ROW_ESTIMATE,
+        offset: headerHeight + FIND_MATCH_ROW_ESTIMATE * index,
+        index,
+      })}
+      onScrollToIndexFailed={({ index, averageItemLength }) => {
+        const len = averageItemLength || FIND_MATCH_ROW_ESTIMATE;
+        listRef.current?.scrollToOffset({
+          offset: Math.max(0, headerHeight + len * index - FIND_FOCUS_SCROLL_BACK_PX),
+          animated: true,
+        });
+      }}
+    />
+  );
+}
+
+export default MainApp;

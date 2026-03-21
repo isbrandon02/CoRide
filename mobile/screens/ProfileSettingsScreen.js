@@ -4,7 +4,6 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,6 +11,7 @@ import {
   View,
 } from 'react-native';
 
+import AppPressable from '../components/AppPressable';
 import { getProfile, saveOnboarding } from '../src/auth';
 
 const bg = '#0B0B0C';
@@ -297,10 +297,10 @@ export default function ProfileSettingsScreen({
           onPress={() => setRetryCount((count) => count + 1)}
         >
           <Text style={styles.signOutLabel}>Try again</Text>
-        </Pressable>
-        <Pressable style={({ pressed }) => [styles.signOutBtnBare, pressed && styles.pressed]} onPress={onLogout}>
+        </AppPressable>
+        <AppPressable variant="link" style={styles.signOutBtnBare} onPress={onLogout}>
           <Text style={styles.signOutOnlyLabel}>Sign out</Text>
-        </Pressable>
+        </AppPressable>
       </View>
     );
   }
@@ -556,7 +556,7 @@ export default function ProfileSettingsScreen({
 
           <Pressable style={({ pressed }) => [styles.signOutBtn, pressed && styles.pressed]} onPress={onLogout}>
             <Text style={styles.signOutOnlyLabel}>Sign out</Text>
-          </Pressable>
+          </AppPressable>
         </View>
       </ScrollView>
       <Pressable
