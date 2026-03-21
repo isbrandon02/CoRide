@@ -104,3 +104,50 @@ export async function loginWithPassword(email, password) {
 
   return data.access_token;
 }
+
+/**
+ * @returns {Promise<{ id: number, email: string, onboarding_completed: boolean }>}
+ */
+export async function getMe(accessToken) {
+  const res = await apiFetch(`${API_BASE_URL}/auth/me`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(parseErrorDetail(data, 'Could not load account'));
+  }
+  return data;
+}
+
+/**
+ * @returns {Promise<object>} GET /profile — home, office, hobbies, route, vehicle, onboarding_completed
+ */
+export async function getProfile(accessToken) {
+  const res = await apiFetch(`${API_BASE_URL}/profile`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(parseErrorDetail(data, 'Could not load profile'));
+  }
+  return data;
+}
+
+/**
+ * @param {object} payload - home_address, office_address, hobbies, commute_route, work_schedule, vehicle
+ */
+export async function saveOnboarding(accessToken, payload) {
+  const res = await apiFetch(`${API_BASE_URL}/profile`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(parseErrorDetail(data, 'Could not save'));
+  }
+  return data;
+}

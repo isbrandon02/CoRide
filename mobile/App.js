@@ -4,13 +4,17 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import LoginScreen from './screens/LoginScreen';
+import OnboardingScreen from './screens/OnboardingScreen';
 import RegisterScreen from './screens/RegisterScreen';
-import { clearStoredToken, getStoredToken, setStoredToken } from './src/auth';
+import { clearStoredToken, getProfile, getStoredToken, setStoredToken } from './src/auth';
+import { shouldShowOnboarding } from './src/onboarding';
 
 export default function App() {
   const [token, setToken] = useState(null);
   const [ready, setReady] = useState(false);
   const [authScreen, setAuthScreen] = useState('login');
+  /** null = still checking, true = show onboarding form, false = done */
+  const [needsOnboarding, setNeedsOnboarding] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -20,15 +24,44 @@ export default function App() {
     })();
   }, []);
 
+  useEffect(() => {
+    if (!token) {
+      setNeedsOnboarding(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const profile = await getProfile(token);
+        if (!cancelled) {
+          setNeedsOnboarding(shouldShowOnboarding(profile));
+        }
+      } catch {
+        if (!cancelled) {
+          setNeedsOnboarding(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
   const handleLoginSuccess = useCallback(async (accessToken) => {
+    setNeedsOnboarding(null);
     await setStoredToken(accessToken);
     setToken(accessToken);
+  }, []);
+
+  const handleOnboardingComplete = useCallback(() => {
+    setNeedsOnboarding(false);
   }, []);
 
   const handleLogout = useCallback(async () => {
     await clearStoredToken();
     setToken(null);
     setAuthScreen('login');
+    setNeedsOnboarding(null);
   }, []);
 
   if (!ready) {
@@ -41,11 +74,19 @@ export default function App() {
     );
   }
 
+  const showBootAfterLogin = token && needsOnboarding === null;
+
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
         <StatusBar style="dark" />
-        {token ? (
+        {showBootAfterLogin ? (
+          <View style={styles.boot}>
+            <ActivityIndicator size="large" color="#0D9488" />
+          </View>
+        ) : token && needsOnboarding ? (
+          <OnboardingScreen accessToken={token} onComplete={handleOnboardingComplete} />
+        ) : token ? (
           <SignedInView onLogout={handleLogout} />
         ) : authScreen === 'register' ? (
           <RegisterScreen onGoToLogin={() => setAuthScreen('login')} />
@@ -65,7 +106,7 @@ function SignedInView({ onLogout }) {
     <View style={styles.signedIn}>
       <Text style={styles.signedInTitle}>You're signed in</Text>
       <Text style={styles.signedInBody}>
-        Your session is stored securely on this device. Use Sign out to clear it.
+        Your profile, commute, and vehicle are saved. Use Sign out to clear your session on this device.
       </Text>
       <Pressable
         style={({ pressed }) => [styles.outlineBtn, pressed && styles.outlineBtnPressed]}

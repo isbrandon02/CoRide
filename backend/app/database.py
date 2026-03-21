@@ -65,6 +65,7 @@ def _normalized_database_url(url: str) -> str:
 def _sqlite_on_connect(dbapi_conn, _connection_record) -> None:
     # DELETE journal avoids -wal / -shm sidecars; WAL often breaks on iCloud / synced folders.
     cur = dbapi_conn.cursor()
+    cur.execute("PRAGMA foreign_keys=ON")
     cur.execute("PRAGMA journal_mode=DELETE")
     cur.execute("PRAGMA busy_timeout=5000")
     cur.close()
@@ -96,14 +97,35 @@ def migrate_sqlite_schema() -> None:
         try:
             rows = conn.execute(text("PRAGMA table_info(users)")).fetchall()
         except Exception:
-            return
-        if not rows:
-            return
-        cols = {r[1] for r in rows}
-        if "is_verified" not in cols:
-            conn.execute(
-                text("ALTER TABLE users ADD COLUMN is_verified INTEGER NOT NULL DEFAULT 1")
-            )
+            rows = []
+        if rows:
+            cols = {r[1] for r in rows}
+            if "is_verified" not in cols:
+                conn.execute(
+                    text("ALTER TABLE users ADD COLUMN is_verified INTEGER NOT NULL DEFAULT 1")
+                )
+            if "onboarding_completed" not in cols:
+                conn.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN onboarding_completed INTEGER NOT NULL DEFAULT 0"
+                    )
+                )
+        try:
+            prows = conn.execute(text("PRAGMA table_info(user_profiles)")).fetchall()
+        except Exception:
+            prows = []
+        if prows:
+            pcols = {r[1] for r in prows}
+            if "hobbies" not in pcols:
+                conn.execute(
+                    text("ALTER TABLE user_profiles ADD COLUMN hobbies TEXT NOT NULL DEFAULT ''")
+                )
+            if "commute_route" not in pcols:
+                conn.execute(
+                    text(
+                        "ALTER TABLE user_profiles ADD COLUMN commute_route TEXT NOT NULL DEFAULT ''"
+                    )
+                )
 
 
 def get_db() -> Generator[Session, None, None]:

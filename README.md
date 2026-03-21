@@ -58,15 +58,19 @@ Stop the server with **Ctrl+C**.
 
 ### Authentication (signup + JWT / OAuth2)
 
-The API stores users in **SQLite** under **`backend/data/coride.db`** by default. There is **no email verification** — after sign up you can sign in immediately. Configure secrets via **`backend/.env`** (see **`backend/.env.example`**).
+The API stores users in **SQLite** under **`backend/data/coride.db`** by default. Configure secrets via **`backend/.env`** (see **`backend/.env.example`**).
 
 | Endpoint | Description |
 |----------|-------------|
 | `POST /auth/signup` | JSON body: `{ "email", "password" }` (password min 8 chars). Creates the account; you can sign in immediately. |
 | `POST /auth/token` | **OAuth2 password flow**: form fields `username` (your **email**) and `password`. Returns `{ "access_token", "token_type": "bearer" }`. |
-| `GET /auth/me` | Requires header `Authorization: Bearer <access_token>`. |
+| `GET /auth/me` | Requires `Authorization: Bearer <token>`. Returns `onboarding_completed` (false until the first profile save). |
+| `GET /profile` | Same auth. Returns home, office, work schedule, vehicle, and `onboarding_completed`. |
+| `PUT /profile` | Same auth. Body: `home_address`, `office_address`, `work_schedule` (`days`, `start_time`, `end_time`), `vehicle` (`make`, `model`, `year`, `color`). Saves data and sets `onboarding_completed` to true. |
 
 In **Swagger UI** ([`/docs`](http://127.0.0.1:8000/docs)), use **Authorize** with the token from `/auth/token`, or call **POST /auth/token** with `application/x-www-form-urlencoded` (`username` + `password`).
+
+The mobile app shows an **onboarding** form the first time you sign in (when `onboarding_completed` is false): home, office, work schedule, and car details.
 
 If you see **`attempt to write a readonly database`**: ensure **`backend/data/`** and **`backend/data/coride.db`** are writable (not read-only on disk, not stuck in a read-only sync folder). Stop uvicorn, remove any **`coride.db-wal`** / **`coride.db-shm`** next to the DB if present, run **`chmod -R u+rwX backend/data`**, then start the server again. Or set **`DATABASE_URL`** to a path under **`/tmp`** for local dev.
 
