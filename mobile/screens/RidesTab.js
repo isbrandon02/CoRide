@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+
+import AppPressable from '../components/AppPressable';
 
 const C = {
   panel: '#111118',
@@ -95,19 +97,19 @@ export default function RidesTab({ bottomPadding, onPressFind }) {
           <Text style={styles.title}>Activity</Text>
           <Text style={styles.sub}>Upcoming, history & driving</Text>
         </View>
-        <Pressable style={styles.findBtn} onPress={onPressFind}>
+        <AppPressable variant="ghost" style={styles.findBtn} onPress={onPressFind}>
           <Text style={styles.findBtnTxt}>+ Find</Text>
-        </Pressable>
+        </AppPressable>
       </View>
 
       <View style={styles.tabRow}>
         {SUBS.map((t) => {
           const on = sub === t.key;
           return (
-            <Pressable key={t.key} style={styles.tabCell} onPress={() => setSub(t.key)}>
+            <AppPressable key={t.key} variant="tab" style={styles.tabCell} onPress={() => setSub(t.key)}>
               <Text style={[styles.tabTxt, on && { color: C.brand }]}>{t.label}</Text>
               {on ? <View style={styles.tabUnd} /> : null}
-            </Pressable>
+            </AppPressable>
           );
         })}
       </View>
@@ -118,9 +120,9 @@ export default function RidesTab({ bottomPadding, onPressFind }) {
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>No upcoming rides</Text>
               <Text style={styles.emptySub}>Request a ride from Find to see it here.</Text>
-              <Pressable style={styles.primary} onPress={onPressFind}>
+              <AppPressable variant="primary" style={styles.primary} onPress={onPressFind}>
                 <Text style={styles.primaryTxt}>Find a ride</Text>
-              </Pressable>
+              </AppPressable>
             </View>
           ) : (
             UPCOMING.map((ride) => (

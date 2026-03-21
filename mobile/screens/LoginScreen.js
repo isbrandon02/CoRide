@@ -3,13 +3,13 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 
+import AppPressable from '../components/AppPressable';
 import { loginWithPassword } from '../src/auth';
 
 const accent = '#0D9488';
@@ -86,12 +86,9 @@ export default function LoginScreen({ onLoginSuccess, onGoToRegister }) {
             </View>
           ) : null}
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.button,
-              pressed && styles.buttonPressed,
-              loading && styles.buttonDisabled,
-            ]}
+          <AppPressable
+            variant="primary"
+            style={[styles.button, loading && styles.buttonDisabled]}
             onPress={handleSubmit}
             disabled={loading}
           >
@@ -100,17 +97,18 @@ export default function LoginScreen({ onLoginSuccess, onGoToRegister }) {
             ) : (
               <Text style={styles.buttonLabel}>Sign in</Text>
             )}
-          </Pressable>
+          </AppPressable>
         </View>
 
-        <Pressable
+        <AppPressable
+          variant="link"
           style={styles.footerLink}
           onPress={onGoToRegister}
           disabled={loading}
         >
           <Text style={styles.footerMuted}>Don't have an account? </Text>
           <Text style={styles.footerAccent}>Create one</Text>
-        </Pressable>
+        </AppPressable>
       </View>
     </KeyboardAvoidingView>
   );
@@ -192,9 +190,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 52,
-  },
-  buttonPressed: {
-    backgroundColor: '#0F766E',
   },
   buttonDisabled: {
     opacity: 0.7,

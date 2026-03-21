@@ -3,12 +3,13 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+
+import AppPressable from '../components/AppPressable';
 
 const C = {
   panel: '#111118',
@@ -75,16 +76,16 @@ export function ChatList({ onOpenThread, bottomPadding }) {
     <View style={styles.flex}>
       <View style={styles.head}>
         <Text style={styles.title}>Messages</Text>
-        <Pressable style={styles.ghostBtn}>
+        <AppPressable variant="ghost" style={styles.ghostBtn}>
           <Text style={styles.ghostText}>+ Group</Text>
-        </Pressable>
+        </AppPressable>
       </View>
       <FlatList
         data={CONVERSATIONS}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[styles.listPad, { paddingBottom: bottomPadding }]}
         renderItem={({ item }) => (
-          <Pressable style={styles.cRow} onPress={() => onOpenThread(item.id)}>
+          <AppPressable variant="default" style={styles.cRow} onPress={() => onOpenThread(item.id)}>
             <View style={styles.emojiWrap}>
               <Text style={styles.emoji}>{item.emoji}</Text>
               {item.unread > 0 ? (
@@ -104,7 +105,7 @@ export function ChatList({ onOpenThread, bottomPadding }) {
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={styles.cTime}>{item.time}</Text>
             </View>
-          </Pressable>
+          </AppPressable>
         )}
         ItemSeparatorComponent={() => <View style={styles.sep} />}
       />
@@ -205,9 +206,9 @@ export function ChatThread({ conversationId, onBack, bottomPadding }) {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
     >
       <View style={styles.threadHead}>
-        <Pressable onPress={onBack} hitSlop={12}>
+        <AppPressable variant="link" onPress={onBack} hitSlop={12} style={styles.backHit}>
           <Text style={styles.back}>‹ Back</Text>
-        </Pressable>
+        </AppPressable>
         <Text style={styles.threadTitle} numberOfLines={1}>
           {meta.title}
         </Text>
@@ -233,9 +234,9 @@ export function ChatThread({ conversationId, onBack, bottomPadding }) {
           onSubmitEditing={send}
           blurOnSubmit={false}
         />
-        <Pressable style={styles.sendBtn} onPress={send}>
+        <AppPressable variant="primary" style={styles.sendBtn} onPress={send}>
           <Text style={styles.sendTxt}>➤</Text>
-        </Pressable>
+        </AppPressable>
       </View>
     </KeyboardAvoidingView>
   );
@@ -299,6 +300,7 @@ const styles = StyleSheet.create({
     borderBottomColor: C.line,
   },
   back: { color: C.muted, fontSize: 16, fontWeight: '600' },
+  backHit: { justifyContent: 'center', paddingVertical: 4, paddingHorizontal: 4, minWidth: 48 },
   threadTitle: { flex: 1, textAlign: 'center', color: C.text, fontSize: 16, fontWeight: '700' },
   threadList: { paddingHorizontal: 16, paddingTop: 12 },
   msgRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-end', marginBottom: 12 },

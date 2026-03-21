@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +10,7 @@ import {
   View,
 } from 'react-native';
 
+import AppPressable from '../components/AppPressable';
 import { registerAccount } from '../src/auth';
 
 const accent = '#0D9488';
@@ -69,12 +69,9 @@ export default function RegisterScreen({ onGoToLogin }) {
                 password to continue.
               </Text>
             </View>
-            <Pressable
-              style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-              onPress={onGoToLogin}
-            >
+            <AppPressable variant="primary" style={styles.button} onPress={onGoToLogin}>
               <Text style={styles.buttonLabel}>Back to sign in</Text>
-            </Pressable>
+            </AppPressable>
           </View>
         </View>
       </View>
@@ -146,12 +143,9 @@ export default function RegisterScreen({ onGoToLogin }) {
               </View>
             ) : null}
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.button,
-                pressed && styles.buttonPressed,
-                loading && styles.buttonDisabled,
-              ]}
+            <AppPressable
+              variant="primary"
+              style={[styles.button, loading && styles.buttonDisabled]}
               onPress={handleSubmit}
               disabled={loading}
             >
@@ -160,13 +154,13 @@ export default function RegisterScreen({ onGoToLogin }) {
               ) : (
                 <Text style={styles.buttonLabel}>Create account</Text>
               )}
-            </Pressable>
+            </AppPressable>
           </View>
 
-          <Pressable style={styles.footerLink} onPress={onGoToLogin} disabled={loading}>
+          <AppPressable variant="link" style={styles.footerLink} onPress={onGoToLogin} disabled={loading}>
             <Text style={styles.footerMuted}>Already have an account? </Text>
             <Text style={styles.footerAccent}>Sign in</Text>
-          </Pressable>
+          </AppPressable>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -270,9 +264,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 52,
-  },
-  buttonPressed: {
-    backgroundColor: '#0F766E',
   },
   buttonDisabled: {
     opacity: 0.7,

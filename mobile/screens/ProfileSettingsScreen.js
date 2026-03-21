@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +10,7 @@ import {
   View,
 } from 'react-native';
 
+import AppPressable from '../components/AppPressable';
 import { getProfile, saveOnboarding } from '../src/auth';
 
 const bg = '#0B0B0C';
@@ -130,15 +130,12 @@ export default function ProfileSettingsScreen({
     return (
       <View style={styles.centered}>
         <Text style={styles.loadErrorText}>{loadError}</Text>
-        <Pressable
-          style={({ pressed }) => [styles.retryBtn, pressed && styles.pressed]}
-          onPress={() => setRetryCount((c) => c + 1)}
-        >
+        <AppPressable variant="ghost" style={styles.retryBtn} onPress={() => setRetryCount((c) => c + 1)}>
           <Text style={styles.signOutLabel}>Try again</Text>
-        </Pressable>
-        <Pressable style={({ pressed }) => [styles.signOutBtnBare, pressed && styles.pressed]} onPress={onLogout}>
+        </AppPressable>
+        <AppPressable variant="link" style={styles.signOutBtnBare} onPress={onLogout}>
           <Text style={styles.signOutOnlyLabel}>Sign out</Text>
-        </Pressable>
+        </AppPressable>
       </View>
     );
   }
@@ -277,12 +274,9 @@ export default function ProfileSettingsScreen({
             </View>
           ) : null}
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.saveBtn,
-              pressed && styles.pressed,
-              saving && styles.saveBtnDisabled,
-            ]}
+          <AppPressable
+            variant="primary"
+            style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
             onPress={handleSave}
             disabled={saving}
           >
@@ -291,14 +285,11 @@ export default function ProfileSettingsScreen({
             ) : (
               <Text style={styles.saveBtnLabel}>Save changes</Text>
             )}
-          </Pressable>
+          </AppPressable>
 
-          <Pressable
-            style={({ pressed }) => [styles.signOutBtn, pressed && styles.pressed]}
-            onPress={onLogout}
-          >
+          <AppPressable variant="ghost" style={styles.signOutBtn} onPress={onLogout}>
             <Text style={styles.signOutOnlyLabel}>Sign out</Text>
-          </Pressable>
+          </AppPressable>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -427,5 +418,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  pressed: { opacity: 0.85 },
 });

@@ -4,17 +4,16 @@ import {
   ActivityIndicator,
   FlatList,
   Modal,
-  Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
+import AppPressable from '../components/AppPressable';
 import { API_BASE_URL } from '../src/config';
 import { ChatList, ChatThread } from './ChatTab';
 import ProfileSettingsScreen from './ProfileSettingsScreen';
@@ -79,19 +78,6 @@ function greetingLine() {
   if (h < 12) return 'Good Morning';
   if (h < 17) return 'Good Afternoon';
   return 'Good Evening';
-}
-
-/** Subtle press feedback for Home list rows (scale + dim). */
-function homeRowPressed(pressed) {
-  return pressed ? { transform: [{ scale: 0.98 }], opacity: 0.78 } : null;
-}
-
-function homeAlertPressed(pressed) {
-  return pressed ? { transform: [{ scale: 0.987 }] } : null;
-}
-
-function homeGhostPressed(pressed) {
-  return pressed ? { transform: [{ scale: 0.96 }], opacity: 0.75 } : null;
 }
 
 function normalizeMatch(x, i) {
@@ -240,8 +226,9 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
         <Text style={s.heroHeadline}>{name}</Text>
         <Text style={s.sub}>{matches.slice(0, 3).length} coworkers are driving your route today</Text>
       </View>
-      <Pressable
-        style={({ pressed }) => [s.alert, homeAlertPressed(pressed)]}
+      <AppPressable
+        variant="solid"
+        style={s.alert}
         onPress={() => setTab('matches')}
         android_ripple={{ color: 'rgba(0,0,0,0.14)' }}
       >
@@ -265,16 +252,17 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
               <Text style={s.pillText}>{commute?.eta ?? 0} min est.</Text>
             </View>
           </View>
-        </Pressable>
+      </AppPressable>
 
         <Text style={s.section}>Coworkers Driving Today</Text>
       {loadingMatches ? (
         <ActivityIndicator color={C.brand} style={s.loader} />
       ) : (
         matches.slice(0, 3).map((m, i) => (
-          <Pressable
+          <AppPressable
             key={m.id}
-            style={({ pressed }) => [s.row, homeRowPressed(pressed)]}
+            variant="default"
+            style={s.row}
             onPress={() => {
               setFindFocusId(m.id);
               setTab('matches');
@@ -289,7 +277,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
               </Text>
             </View>
             <Badge label={i === 1 ? '1 left' : 'Join'} tone={i === 1 ? 'sky' : 'brand'} />
-          </Pressable>
+          </AppPressable>
         ))
       )}
 
@@ -322,8 +310,9 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
             <Text style={[s.weekDay, d === 'TUE' && { color: C.brand }]}>{d}</Text>
             <Text style={[s.weekText, (b === 'Solo' || b === 'Remote') && { color: C.muted }]}>{detail}</Text>
             {b === 'Find' ? (
-              <Pressable
-                style={({ pressed }) => [s.ghostBtn, homeGhostPressed(pressed)]}
+              <AppPressable
+                variant="ghost"
+                style={s.ghostBtn}
                 onPress={() => {
                   setFindFocusId(null);
                   setTab('matches');
@@ -331,7 +320,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
                 android_ripple={{ color: 'rgba(255,255,255,0.12)' }}
               >
                 <Text style={s.ghostText}>Find</Text>
-              </Pressable>
+              </AppPressable>
             ) : (
               <Badge label={b} tone={b === 'Confirmed' ? 'brand' : b === 'Driver' ? 'amber' : 'gray'} />
             )}
@@ -341,10 +330,12 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
     </ScrollView>
   );
 
-  const tabBarHeight = 82 + insets.bottom;
+  /** Tab row (icons + labels) + one safe-area inset — not doubled with screen safe area. */
+  const tabBarBottomPad = Math.max(insets.bottom, 8);
+  const tabBarHeight = 58 + tabBarBottomPad;
 
   return (
-    <SafeAreaView style={s.safe}>
+    <SafeAreaView style={s.safe} edges={['top', 'left', 'right']}>
       <StatusBar style="light" />
       <View style={s.root}>
         {tab === 'home' && <Home />}
@@ -400,12 +391,13 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
             />
           </View>
         )}
-        <View style={[s.tabs, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <View style={[s.tabs, { paddingBottom: tabBarBottomPad }]}>
           {TAB_BAR_ITEMS.map(({ key: k, label: l, iconOn, iconOff }) => {
             const on = tab === k;
             return (
-              <Pressable
+              <AppPressable
                 key={k}
+                variant="tab"
                 style={[s.tab, on && s.tabOn]}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: on }}
@@ -424,14 +416,14 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
                   <Ionicons name={on ? iconOn : iconOff} size={22} color={on ? C.brand : C.faint} />
                   <Text style={[s.tabText, on && { color: C.brand }]}>{l}</Text>
                 </View>
-              </Pressable>
+              </AppPressable>
             );
           })}
         </View>
       </View>
       <Modal visible={!!sheet} transparent animationType="slide" onRequestClose={() => setSheet(null)}>
         <View style={s.backdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setSheet(null)} />
+          <AppPressable variant="none" style={StyleSheet.absoluteFill} onPress={() => setSheet(null)} />
           <View style={s.sheet}>
             <View style={s.handle} />
             {sheet && (
@@ -453,12 +445,16 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
                     </View>
                   ))}
                 </View>
-                <Pressable style={s.sheetConfirmBtn} onPress={confirm}>
+                <AppPressable variant="primary" style={s.sheetConfirmBtn} onPress={confirm}>
                   <Text style={s.sheetConfirmText}>Confirm</Text>
-                </Pressable>
-                <Pressable style={{ alignItems: 'center', paddingVertical: 14 }} onPress={() => setSheet(null)}>
+                </AppPressable>
+                <AppPressable
+                  variant="link"
+                  style={{ alignItems: 'center', paddingVertical: 14 }}
+                  onPress={() => setSheet(null)}
+                >
                   <Text style={s.sub}>Cancel</Text>
-                </Pressable>
+                </AppPressable>
               </>
             )}
           </View>
@@ -833,9 +829,9 @@ function FindMatchesList({
             <Text style={s.title}>Find a Ride</Text>
             <Text style={s.sub}>Matched for tomorrow morning</Text>
           </View>
-          <Pressable style={s.ghostBtn}>
+          <AppPressable variant="ghost" style={s.ghostBtn}>
             <Text style={s.ghostText}>Filter</Text>
-          </Pressable>
+          </AppPressable>
         </View>
         <View style={s.search}>
           <Text style={s.searchLbl}>Search</Text>
@@ -851,9 +847,14 @@ function FindMatchesList({
           {FILTERS.map((f) => {
             const on = filters.includes(f);
             return (
-              <Pressable key={f} style={[s.chip, on && s.chipOn]} onPress={() => toggleFilter(f)}>
+              <AppPressable
+                key={f}
+                variant="chip"
+                style={[s.chip, on && s.chipOn]}
+                onPress={() => toggleFilter(f)}
+              >
                 <Text style={[s.chipText, on && { color: C.brand }]}>{f}</Text>
-              </Pressable>
+              </AppPressable>
             );
           })}
         </ScrollView>
@@ -930,10 +931,16 @@ function FindMatchesList({
             </View>
           </View>
           <View style={s.actions}>
-            <Pressable disabled={done} style={[s.primary, done && { opacity: 0.55 }]} onPress={() => setSheet(m)}>
+            <AppPressable
+              variant="primary"
+              disabled={done}
+              style={[s.primary, done && { opacity: 0.55 }]}
+              onPress={() => setSheet(m)}
+            >
               <Text style={s.primaryText}>{done ? 'Ride Requested' : 'Request Ride'}</Text>
-            </Pressable>
-            <Pressable
+            </AppPressable>
+            <AppPressable
+              variant="ghost"
               style={s.ghostBtnWide}
               onPress={() => {
                 setChatConvId('morning');
@@ -942,7 +949,7 @@ function FindMatchesList({
               }}
             >
               <Text style={s.ghostText}>Chat</Text>
-            </Pressable>
+            </AppPressable>
           </View>
         </View>
       );

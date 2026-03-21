@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,6 +9,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
+import AppPressable from '../components/AppPressable';
 import { getMatches } from '../src/auth';
 import ProfileSettingsScreen from './ProfileSettingsScreen';
 
@@ -328,9 +328,9 @@ function DriverRow({ initials: ini, color, name, detail, action }) {
         <Text style={styles.driverDetail}>{detail}</Text>
       </View>
       {action.type === 'join' ? (
-        <Pressable style={({ pressed }) => [styles.joinBtn, pressed && styles.pressed]}>
+        <AppPressable variant="ghost" style={styles.joinBtn}>
           <Text style={styles.joinText}>Join</Text>
-        </Pressable>
+        </AppPressable>
       ) : (
         <View style={styles.leftBadge}>
           <Text style={styles.leftBadgeText}>{action.text}</Text>
@@ -359,9 +359,9 @@ function WeekRow({ day, main, tag, icon, iconColor, action }) {
           <Text style={[styles.weekTagText, tag.orange && styles.weekTagTextOrange]}>{tag.text}</Text>
         </View>
       ) : action ? (
-        <Pressable style={({ pressed }) => [styles.findBtn, pressed && styles.pressed]}>
+        <AppPressable variant="ghost" style={styles.findBtn}>
           <Text style={styles.findBtnText}>{action.text}</Text>
-        </Pressable>
+        </AppPressable>
       ) : null}
     </View>
   );
@@ -375,8 +375,9 @@ function BottomBar({ tab, onChange, bottomInset, findBadge }) {
         const badge =
           t.badgeKey === 'find' ? findBadge : t.badge != null ? String(t.badge) : null;
         return (
-          <Pressable
+          <AppPressable
             key={t.key}
+            variant="tab"
             style={styles.tabItem}
             onPress={() => onChange(t.key)}
           >
@@ -393,7 +394,7 @@ function BottomBar({ tab, onChange, bottomInset, findBadge }) {
               ) : null}
             </View>
             <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{t.label}</Text>
-          </Pressable>
+          </AppPressable>
         );
       })}
     </View>
@@ -733,9 +734,6 @@ const styles = StyleSheet.create({
     color: teal,
     fontSize: 16,
     fontWeight: '600',
-  },
-  pressed: {
-    opacity: 0.85,
   },
   findHead: {
     fontSize: 24,

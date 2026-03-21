@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +10,7 @@ import {
   View,
 } from 'react-native';
 
+import AppPressable from '../components/AppPressable';
 import { saveOnboarding } from '../src/auth';
 
 const accent = '#0D9488';
@@ -198,12 +198,9 @@ export default function OnboardingScreen({ accessToken, onComplete }) {
             </View>
           ) : null}
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.button,
-              pressed && styles.buttonPressed,
-              loading && styles.buttonDisabled,
-            ]}
+          <AppPressable
+            variant="primary"
+            style={[styles.button, loading && styles.buttonDisabled]}
             onPress={handleSubmit}
             disabled={loading}
           >
@@ -212,7 +209,7 @@ export default function OnboardingScreen({ accessToken, onComplete }) {
             ) : (
               <Text style={styles.buttonLabel}>Save and continue</Text>
             )}
-          </Pressable>
+          </AppPressable>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -273,7 +270,6 @@ const styles = StyleSheet.create({
     minHeight: 52,
     justifyContent: 'center',
   },
-  buttonPressed: { backgroundColor: '#0F766E' },
   buttonDisabled: { opacity: 0.7 },
   buttonLabel: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });
