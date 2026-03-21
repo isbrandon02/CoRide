@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   ActivityIndicator,
@@ -114,6 +114,9 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
   const [sheet, setSheet] = useState(null);
   const [cancelSheet, setCancelSheet] = useState(null);
   const [requested, setRequested] = useState([]);
+  const [matchJumpTarget, setMatchJumpTarget] = useState(null);
+  const matchesScrollRef = useRef(null);
+  const matchCardPositions = useRef({});
 
   const apiBase = API_BASE_URL;
 
@@ -190,6 +193,22 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
     setRequested((cur) => cur.filter((id) => id !== cancelSheet.id));
     setCancelSheet(null);
   };
+  const openMatchCard = (matchId) => {
+    setSearch('');
+    setMatchJumpTarget(matchId);
+    setTab('matches');
+  };
+
+  useEffect(() => {
+    if (tab !== 'matches' || !matchJumpTarget) return;
+    const targetY = matchCardPositions.current[matchJumpTarget];
+    if (typeof targetY !== 'number' || !matchesScrollRef.current) return;
+    const timeout = setTimeout(() => {
+      matchesScrollRef.current?.scrollTo({ y: Math.max(targetY - 24, 0), animated: true });
+      setMatchJumpTarget(null);
+    }, 80);
+    return () => clearTimeout(timeout);
+  }, [tab, matchJumpTarget, shown]);
 
   const name = displayName || 'there';
   const greet = greetingLine();
@@ -201,7 +220,7 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
         <Text style={s.title}>{name}</Text>
         <Text style={s.sub}>{matches.slice(0, 3).length} coworkers are driving your route today</Text>
       </View>
-      <Pressable style={s.alert} onPress={() => setTab('matches')}>
+      <Pressable style={s.alert} onPress={() => openMatchCard(commute?.id ?? top?.id)}>
         <Text style={s.alertOver}>{requested.length ? 'Ride requested' : "Today's commute"}</Text>
         <Text style={s.alertTitle}>
           {commute ? `${requested.length ? 'Waiting on' : 'Best match:'} ${commute.name}` : 'No ride lined up yet'}
@@ -242,7 +261,7 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
         <ActivityIndicator color={C.brand} style={s.loader} />
       ) : (
         matches.slice(0, 3).map((m, i) => (
-          <Pressable key={m.id} style={s.row} onPress={() => setTab('matches')}>
+          <View key={m.id} style={s.row}>
             <Avatar initials={m.initials} color={m.color} />
             <View style={{ flex: 1 }}>
               <Text style={s.rowTitle}>{m.name}</Text>
@@ -250,8 +269,10 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
                 {m.time} - {m.seats} seats - {m.area} - +{m.detour} min
               </Text>
             </View>
-            <Badge label={i === 1 ? '1 left' : 'Join'} tone={i === 1 ? 'sky' : 'brand'} />
-          </Pressable>
+            <Pressable onPress={() => openMatchCard(m.id)} hitSlop={8}>
+              <Badge label={i === 1 ? '1 left' : 'Join'} tone={i === 1 ? 'sky' : 'brand'} />
+            </Pressable>
+          </View>
         ))
       )}
       <Text style={s.section}>This Week</Text>
@@ -274,7 +295,7 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
   );
 
   const Matches = () => (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.pad}>
+    <ScrollView ref={matchesScrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={s.pad}>
       <View style={s.head}>
         <View>
           <Text style={s.title}>Find a Ride</Text>
@@ -321,7 +342,13 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
         shown.map((m, i) => {
           const done = requested.includes(m.id);
           return (
-            <View key={m.id} style={[s.match, i === 0 && { borderColor: C.brand }]}>
+            <View
+              key={m.id}
+              style={[s.match, i === 0 && { borderColor: C.brand }]}
+              onLayout={(event) => {
+                matchCardPositions.current[m.id] = event.nativeEvent.layout.y;
+              }}
+            >
               <View style={s.between}>
                 <Badge label={i === 0 ? 'Top Match' : 'Driving tomorrow'} tone={i === 0 ? 'brand' : 'gray'} />
                 {done ? <Badge label="Requested" tone="sky" /> : <Badge label={`${m.seats} seats`} />}
@@ -498,8 +525,8 @@ export default function MainApp({ accessToken, accountEmail, displayName, onLogo
                     </View>
                   ))}
                 </View>
-                <Pressable style={s.primary} onPress={confirm}>
-                  <Text style={s.primaryText}>Confirm request</Text>
+                <Pressable style={s.sheetPrimaryButton} onPress={confirm}>
+                  <Text style={s.sheetPrimaryText}>Confirm request</Text>
                 </Pressable>
                 <Pressable style={{ alignItems: 'center', paddingVertical: 14 }} onPress={() => setSheet(null)}>
                   <Text style={s.sub}>Cancel</Text>
@@ -722,6 +749,17 @@ const s = StyleSheet.create({
     paddingVertical: 14,
   },
   primaryText: { color: '#021b14', fontSize: 14, fontWeight: '800' },
+  sheetPrimaryButton: {
+    width: '100%',
+    minHeight: 52,
+    backgroundColor: C.brand,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  sheetPrimaryText: { color: '#000000', fontSize: 14, fontWeight: '800', textAlign: 'center' },
   cancelBtn: {
     minWidth: 76,
     alignItems: 'center',
