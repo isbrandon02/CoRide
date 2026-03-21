@@ -1,12 +1,13 @@
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
+import HomeScreen from './screens/HomeScreen';
 import LoginScreen from './screens/LoginScreen';
 import OnboardingScreen from './screens/OnboardingScreen';
 import RegisterScreen from './screens/RegisterScreen';
-import { clearStoredToken, getProfile, getStoredToken, setStoredToken } from './src/auth';
+import { clearStoredToken, getMe, getProfile, getStoredToken, setStoredToken } from './src/auth';
 import { shouldShowOnboarding } from './src/onboarding';
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
   const [authScreen, setAuthScreen] = useState('login');
   /** null = still checking, true = show onboarding form, false = done */
   const [needsOnboarding, setNeedsOnboarding] = useState(null);
+  const [accountEmail, setAccountEmail] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -47,6 +49,29 @@ export default function App() {
     };
   }, [token]);
 
+  useEffect(() => {
+    if (!token || needsOnboarding !== false) {
+      setAccountEmail(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const me = await getMe(token);
+        if (!cancelled) {
+          setAccountEmail(me.email ?? null);
+        }
+      } catch {
+        if (!cancelled) {
+          setAccountEmail(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, needsOnboarding]);
+
   const handleLoginSuccess = useCallback(async (accessToken) => {
     setNeedsOnboarding(null);
     await setStoredToken(accessToken);
@@ -75,11 +100,12 @@ export default function App() {
   }
 
   const showBootAfterLogin = token && needsOnboarding === null;
+  const signedIn = Boolean(token && needsOnboarding === false);
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-        <StatusBar style="dark" />
+      <SafeAreaView style={[styles.root, signedIn && styles.rootDark]} edges={['top', 'bottom']}>
+        <StatusBar style={signedIn ? 'light' : 'dark'} />
         {showBootAfterLogin ? (
           <View style={styles.boot}>
             <ActivityIndicator size="large" color="#0D9488" />
@@ -87,7 +113,12 @@ export default function App() {
         ) : token && needsOnboarding ? (
           <OnboardingScreen accessToken={token} onComplete={handleOnboardingComplete} />
         ) : token ? (
-          <SignedInView onLogout={handleLogout} />
+          <HomeScreen
+            accessToken={token}
+            accountEmail={accountEmail}
+            userName={displayNameFromEmail(accountEmail)}
+            onLogout={handleLogout}
+          />
         ) : authScreen === 'register' ? (
           <RegisterScreen onGoToLogin={() => setAuthScreen('login')} />
         ) : (
@@ -101,21 +132,16 @@ export default function App() {
   );
 }
 
-function SignedInView({ onLogout }) {
-  return (
-    <View style={styles.signedIn}>
-      <Text style={styles.signedInTitle}>You're signed in</Text>
-      <Text style={styles.signedInBody}>
-        Your profile, commute, and vehicle are saved. Use Sign out to clear your session on this device.
-      </Text>
-      <Pressable
-        style={({ pressed }) => [styles.outlineBtn, pressed && styles.outlineBtnPressed]}
-        onPress={onLogout}
-      >
-        <Text style={styles.outlineBtnLabel}>Sign out</Text>
-      </Pressable>
-    </View>
-  );
+function displayNameFromEmail(email) {
+  if (!email) {
+    return 'Jamie Santos';
+  }
+  const local = email.split('@')[0] ?? '';
+  const parts = local.split(/[._-]+/).filter(Boolean);
+  if (parts.length === 0) {
+    return 'there';
+  }
+  return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ');
 }
 
 const styles = StyleSheet.create({
@@ -123,43 +149,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F1F5F9',
   },
+  rootDark: {
+    backgroundColor: '#0B0B0C',
+  },
   boot: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#F1F5F9',
-  },
-  signedIn: {
-    flex: 1,
-    paddingHorizontal: 24,
-    justifyContent: 'center',
-  },
-  signedInTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#0F172A',
-    marginBottom: 12,
-  },
-  signedInBody: {
-    fontSize: 16,
-    color: '#64748B',
-    lineHeight: 22,
-    marginBottom: 28,
-  },
-  outlineBtn: {
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: '#0D9488',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-  },
-  outlineBtnPressed: {
-    opacity: 0.85,
-  },
-  outlineBtnLabel: {
-    color: '#0D9488',
-    fontSize: 16,
-    fontWeight: '600',
   },
 });
