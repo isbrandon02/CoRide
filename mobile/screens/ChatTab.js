@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -17,41 +17,8 @@ const C = {
   muted: 'rgba(240,240,245,0.62)',
   faint: 'rgba(240,240,245,0.34)',
   brand: '#00c896',
-  brandSoft: 'rgba(0,200,150,0.12)',
   sky: '#4ea8f5',
-  amber: '#f5a623',
-  purple: '#a78bfa',
 };
-
-export const CONVERSATIONS = [
-  { id: 'morning', emoji: '🚘', title: 'Tuesday Morning Crew', preview: 'Alex: No worries, pulling up now 🚘', time: '8:33 AM', unread: 2 },
-  { id: 'evening', emoji: '🌆', title: 'Evening Carpool', preview: 'Maya: See you all at 5:30!', time: 'Yesterday', unread: 0 },
-  { id: 'friday', emoji: '☀️', title: 'Friday Flex Crew', preview: "Dan: Who's in this Friday?", time: 'Fri', unread: 0 },
-];
-
-const SEED = {
-  morning: [
-    { id: 'm1', kind: 'sep', text: 'Tuesday, Jan 14' },
-    { id: 'm2', kind: 'them', sender: 'Alex Chen', initials: 'AC', color: C.brand, body: 'Hey everyone! Confirmed for tomorrow 8:30 AM pickup at Oak & Main.', time: '8:42 PM' },
-    { id: 'm3', kind: 'them', sender: 'Maya Patel', initials: 'MP', color: C.amber, body: "Oak & Main works! I'll be there at 8:25 👍", time: '8:51 PM' },
-    { id: 'm4', kind: 'sep', text: 'Today · Jan 15' },
-    { id: 'm5', kind: 'me', initials: 'You', color: C.sky, body: 'Running 2 min late, there at 8:37 🙏', time: '8:31 AM' },
-    { id: 'm6', kind: 'them', sender: 'Alex Chen', initials: 'AC', color: C.brand, body: 'No worries, pulling up now 🚘', time: '8:33 AM' },
-  ],
-  evening: [
-    { id: 'e1', kind: 'them', sender: 'Maya Patel', initials: 'MP', color: C.amber, body: 'See you all at 5:30!', time: '4:12 PM' },
-  ],
-  friday: [
-    { id: 'f1', kind: 'them', sender: 'Dan Kim', initials: 'DK', color: C.sky, body: "Who's in this Friday?", time: 'Wed 3:00 PM' },
-  ],
-};
-
-const MOCK_REPLIES = ['Got it 👍', 'Sounds good!', 'See you there 🚘', 'Thanks!', 'On my way'];
-const MOCK_SENDERS = [
-  { initials: 'AC', color: C.brand, name: 'Alex Chen' },
-  { initials: 'MP', color: C.amber, name: 'Maya Patel' },
-  { initials: 'DK', color: C.sky, name: 'Dan Kim' },
-];
 
 function timeNow() {
   return new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -70,28 +37,34 @@ const aStyles = StyleSheet.create({
   avText: { color: '#fff', fontWeight: '800' },
 });
 
+/**
+ * @param {{ bottomPadding: number, onOpenThread: (c: { id: string, title: string, preview?: string, time?: string }) => void }} props
+ */
 export function ChatList({ onOpenThread, bottomPadding }) {
+  const conversations = [];
+
   return (
     <View style={styles.flex}>
       <View style={styles.head}>
         <Text style={styles.title}>Messages</Text>
-        <Pressable style={styles.ghostBtn}>
-          <Text style={styles.ghostText}>+ Group</Text>
+        <Pressable style={styles.ghostBtn} disabled>
+          <Text style={[styles.ghostText, { opacity: 0.45 }]}>+ Group</Text>
         </Pressable>
       </View>
       <FlatList
-        data={CONVERSATIONS}
+        data={conversations}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[styles.listPad, { paddingBottom: bottomPadding }]}
+        ListEmptyComponent={
+          <View style={styles.emptyInbox}>
+            <Text style={styles.emptyTitle}>No conversations yet</Text>
+            <Text style={styles.emptyBody}>When messaging is available, threads will appear here.</Text>
+          </View>
+        }
         renderItem={({ item }) => (
-          <Pressable style={styles.cRow} onPress={() => onOpenThread(item.id)}>
+          <Pressable style={styles.cRow} onPress={() => onOpenThread(item)}>
             <View style={styles.emojiWrap}>
-              <Text style={styles.emoji}>{item.emoji}</Text>
-              {item.unread > 0 ? (
-                <View style={styles.dot}>
-                  <Text style={styles.dotTxt}>{item.unread}</Text>
-                </View>
-              ) : null}
+              <Text style={styles.emoji}>💬</Text>
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.cName} numberOfLines={1}>
@@ -112,28 +85,19 @@ export function ChatList({ onOpenThread, bottomPadding }) {
   );
 }
 
-export function ChatThread({ conversationId, onBack, bottomPadding }) {
-  const meta = CONVERSATIONS.find((c) => c.id === conversationId) ?? CONVERSATIONS[0];
-  const seed = useMemo(() => SEED[conversationId] ?? SEED.morning, [conversationId]);
-  const [rows, setRows] = useState(seed);
+export function ChatThread({ conversationId, threadTitle = 'Chat', onBack, bottomPadding }) {
+  const [rows, setRows] = useState([]);
   const [draft, setDraft] = useState('');
-  const timers = useRef([]);
   const listRef = useRef(null);
 
-  useEffect(
-    () => () => {
-      timers.current.forEach(clearTimeout);
-    },
-    [],
-  );
+  useEffect(() => {
+    setRows([]);
+    setDraft('');
+  }, [conversationId]);
 
   const scrollEnd = useCallback(() => {
     requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
   }, []);
-
-  useEffect(() => {
-    setRows(seed);
-  }, [seed, conversationId]);
 
   useEffect(() => {
     scrollEnd();
@@ -144,26 +108,6 @@ export function ChatThread({ conversationId, onBack, bottomPadding }) {
     if (!t) return;
     setRows((r) => [...r, { id: `u-${Date.now()}`, kind: 'me', initials: 'You', color: C.sky, body: t, time: timeNow() }]);
     setDraft('');
-    if (Math.random() > 0.4) {
-      const delay = 600 + Math.random() * 900;
-      const timer = setTimeout(() => {
-        const who = MOCK_SENDERS[Math.floor(Math.random() * MOCK_SENDERS.length)];
-        const body = MOCK_REPLIES[Math.floor(Math.random() * MOCK_REPLIES.length)];
-        setRows((cur) => [
-          ...cur,
-          {
-            id: `r-${Date.now()}`,
-            kind: 'them',
-            sender: who.name,
-            initials: who.initials,
-            color: who.color,
-            body,
-            time: timeNow(),
-          },
-        ]);
-      }, delay);
-      timers.current.push(timer);
-    }
   };
 
   const renderItem = ({ item }) => {
@@ -198,6 +142,8 @@ export function ChatThread({ conversationId, onBack, bottomPadding }) {
     );
   };
 
+  const title = threadTitle || 'Chat';
+
   return (
     <KeyboardAvoidingView
       style={styles.flex}
@@ -209,7 +155,7 @@ export function ChatThread({ conversationId, onBack, bottomPadding }) {
           <Text style={styles.back}>‹ Back</Text>
         </Pressable>
         <Text style={styles.threadTitle} numberOfLines={1}>
-          {meta.title}
+          {title}
         </Text>
         <View style={{ width: 56 }} />
       </View>
@@ -221,12 +167,15 @@ export function ChatThread({ conversationId, onBack, bottomPadding }) {
         contentContainerStyle={[styles.threadList, { paddingBottom: 12 }]}
         onContentSizeChange={scrollEnd}
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <Text style={styles.threadEmpty}>No messages yet. Say hello below.</Text>
+        }
       />
       <View style={[styles.inputBar, { marginBottom: bottomPadding }]}>
         <TextInput
           value={draft}
           onChangeText={setDraft}
-          placeholder={`Message ${meta.title}…`}
+          placeholder={`Message ${title}…`}
           placeholderTextColor={C.faint}
           style={styles.input}
           multiline
@@ -262,6 +211,9 @@ const styles = StyleSheet.create({
   },
   ghostText: { color: C.text, fontSize: 12, fontWeight: '700' },
   listPad: { paddingHorizontal: 8, paddingBottom: 24 },
+  emptyInbox: { paddingHorizontal: 28, paddingVertical: 36, alignItems: 'center' },
+  emptyTitle: { color: C.text, fontSize: 16, fontWeight: '700' },
+  emptyBody: { color: C.muted, fontSize: 13, marginTop: 8, textAlign: 'center', lineHeight: 20 },
   cRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 12 },
   emojiWrap: {
     width: 48,
@@ -272,19 +224,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emoji: { fontSize: 22 },
-  dot: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: C.brand,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  dotTxt: { fontSize: 8.5, fontWeight: '800', color: '#000' },
   cName: { fontSize: 15, fontWeight: '600', color: C.text },
   cPrev: { fontSize: 12.5, color: C.muted, marginTop: 2 },
   cTime: { fontSize: 11, color: C.faint },
@@ -301,6 +240,7 @@ const styles = StyleSheet.create({
   back: { color: C.muted, fontSize: 16, fontWeight: '600' },
   threadTitle: { flex: 1, textAlign: 'center', color: C.text, fontSize: 16, fontWeight: '700' },
   threadList: { paddingHorizontal: 16, paddingTop: 12 },
+  threadEmpty: { textAlign: 'center', color: C.faint, fontSize: 13, paddingVertical: 24 },
   msgRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-end', marginBottom: 12 },
   msgRowMe: { justifyContent: 'flex-end' },
   dateSep: { textAlign: 'center', fontSize: 11, color: C.faint, marginVertical: 10 },

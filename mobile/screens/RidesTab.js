@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+
+import { getRides, patchRideStatus } from '../src/auth';
 
 const C = {
   panel: '#111118',
@@ -14,54 +16,34 @@ const C = {
   amber: '#f5a623',
 };
 
-const UPCOMING = [
-  {
-    id: 'up-1',
-    time: '8:30 AM',
-    dateLabel: 'Tomorrow · Tue Jan 15',
-    status: 'Confirmed',
-    tone: 'brand',
-    driver: { name: 'Alex Chen', initials: 'AC', color: C.brand, vehicle: '2019 Honda Accord · White · XYZ 4892' },
-    riderSummary: '3 riders · 1 open seat',
-    pickup: 'Oak St pickup',
-  },
-  {
-    id: 'up-2',
-    time: '8:15 AM',
-    dateLabel: "Thu Jan 17 · You're driving",
-    status: 'Driving',
-    tone: 'amber',
-    driver: { name: 'You', initials: 'You', color: '#555', vehicle: 'Your car · 2 riders joining' },
-    riderSummary: '+ 2 open spots',
-    estEarn: 6.8,
-  },
-];
+function initialsFromName(name) {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  return parts
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join('')
+    .toUpperCase();
+}
 
-const HISTORY = [
-  { id: 'h1', title: 'Rode with Alex', sub: 'Mon Jan 13 · $3.20', initials: 'AC', color: C.brand, badge: 'Done', tone: 'brand' },
-  { id: 'h2', title: 'You drove · 2 riders', sub: 'Fri Jan 10 · +$6.40 earned', initials: 'Y', color: '#555', badge: 'Drove', tone: 'amber' },
-  { id: 'h3', title: 'Rode with Maya', sub: 'Thu Jan 9 · $2.80', initials: 'MP', color: C.amber, badge: 'Done', tone: 'brand' },
-];
+function formatRideWhen(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
 
-const DRIVING = [
-  {
-    id: 'd1',
-    dateLabel: 'Thu Jan 17',
-    status: 'Open',
-    line: '8:15 AM · 2 confirmed · 2 spots left · Est. earn $6.80',
-    pips: [
-      { initials: 'DK', color: C.sky },
-      { initials: 'SL', color: '#34d399' },
-    ],
-  },
-];
-
-function Badge({ label, tone }) {
-  const bg = tone === 'amber' ? 'rgba(245,166,35,0.12)' : C.brandSoft;
-  const fg = tone === 'amber' ? C.amber : C.brand;
+function Badge({ label, tone = 'brand' }) {
+  const tones = {
+    brand: { bg: C.brandSoft, fg: C.brand },
+    amber: { bg: 'rgba(245,166,35,0.12)', fg: C.amber },
+    sky: { bg: 'rgba(78,168,245,0.12)', fg: C.sky },
+    gray: { bg: 'rgba(255,255,255,0.07)', fg: C.muted },
+  };
+  const t = tones[tone] ?? tones.brand;
   return (
-    <View style={[styles.badge, { backgroundColor: bg }]}>
-      <Text style={[styles.badgeTxt, { color: fg }]}>{label}</Text>
+    <View style={[styles.badge, { backgroundColor: t.bg }]}>
+      <Text style={[styles.badgeTxt, { color: t.fg }]}>{label}</Text>
     </View>
   );
 }
@@ -75,14 +57,70 @@ function Avatar({ initials, color, size = 40 }) {
   );
 }
 
-const SUBS = [
+const SUB_KEYS = [
   { key: 'up', label: 'Upcoming' },
   { key: 'past', label: 'History' },
   { key: 'drv', label: 'Driving' },
 ];
 
-export default function RidesTab({ bottomPadding, onPressFind }) {
+export default function RidesTab({ accessToken, bottomPadding, onPressFind, refreshKey = 0, onRidesMutated }) {
   const [sub, setSub] = useState('up');
+  const [rides, setRides] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [actingId, setActingId] = useState(null);
+
+  useEffect(() => {
+    if (!accessToken) {
+      setRides([]);
+      setLoading(false);
+      return;
+    }
+    let live = true;
+    setLoading(true);
+    setError(null);
+    getRides(accessToken)
+      .then((data) => {
+        if (live) setRides(data.rides ?? []);
+      })
+      .catch((e) => {
+        if (live) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [accessToken, refreshKey]);
+
+  const { upcoming, history, driving } = useMemo(() => {
+    const list = rides ?? [];
+    const historyList = list.filter(
+      (r) =>
+        r.status === 'declined' || r.status === 'cancelled' || r.status === 'completed',
+    );
+    const drivingList = list.filter((r) => r.role === 'driver' && r.status === 'pending');
+    const upcomingList = list.filter((r) => {
+      if (r.status === 'declined' || r.status === 'cancelled' || r.status === 'completed') return false;
+      if (r.role === 'driver' && r.status === 'pending') return false;
+      return r.status === 'pending' || r.status === 'accepted';
+    });
+    return { upcoming: upcomingList, history: historyList, driving: drivingList };
+  }, [rides]);
+
+  async function respondToRequest(rideId, status) {
+    if (!accessToken) return;
+    setActingId(rideId);
+    try {
+      await patchRideStatus(accessToken, rideId, status);
+      onRidesMutated?.();
+    } catch (e) {
+      Alert.alert('Could not update', e instanceof Error ? e.message : String(e));
+    } finally {
+      setActingId(null);
+    }
+  }
 
   return (
     <ScrollView
@@ -93,7 +131,7 @@ export default function RidesTab({ bottomPadding, onPressFind }) {
       <View style={styles.head}>
         <View>
           <Text style={styles.title}>My Rides</Text>
-          <Text style={styles.sub}>Upcoming & past</Text>
+          <Text style={styles.sub}>Your requests · rides with you as driver</Text>
         </View>
         <Pressable style={styles.findBtn} onPress={onPressFind}>
           <Text style={styles.findBtnTxt}>+ Find</Text>
@@ -101,11 +139,13 @@ export default function RidesTab({ bottomPadding, onPressFind }) {
       </View>
 
       <View style={styles.tabRow}>
-        {SUBS.map((t) => {
+        {SUB_KEYS.map((t) => {
           const on = sub === t.key;
+          const label =
+            t.key === 'drv' && driving.length > 0 ? `Driving (${driving.length})` : t.label;
           return (
             <Pressable key={t.key} style={styles.tabCell} onPress={() => setSub(t.key)}>
-              <Text style={[styles.tabTxt, on && { color: C.brand }]}>{t.label}</Text>
+              <Text style={[styles.tabTxt, on && { color: C.brand }]}>{label}</Text>
               {on ? <View style={styles.tabUnd} /> : null}
             </Pressable>
           );
@@ -114,7 +154,14 @@ export default function RidesTab({ bottomPadding, onPressFind }) {
 
       {sub === 'up' && (
         <>
-          {UPCOMING.length === 0 ? (
+          {loading ? (
+            <ActivityIndicator color={C.brand} style={{ marginTop: 28 }} />
+          ) : error ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyTitle}>Could not load rides</Text>
+              <Text style={styles.emptySub}>{error}</Text>
+            </View>
+          ) : upcoming.length === 0 ? (
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>No upcoming rides</Text>
               <Text style={styles.emptySub}>Request a ride from Find to see it here.</Text>
@@ -123,56 +170,113 @@ export default function RidesTab({ bottomPadding, onPressFind }) {
               </Pressable>
             </View>
           ) : (
-            UPCOMING.map((ride) => (
-              <View key={ride.id} style={styles.rcard}>
-                <View style={styles.rcHead}>
-                  <View>
-                    <Text style={styles.rcTime}>{ride.time}</Text>
-                    <Text style={styles.rcDate}>{ride.dateLabel}</Text>
+            upcoming.map((ride) => {
+              const other = ride.other_user;
+              const ini = initialsFromName(other.name);
+              const statusLabel =
+                ride.status === 'accepted'
+                  ? 'Confirmed'
+                  : ride.status === 'pending'
+                    ? 'Pending'
+                    : ride.status;
+              const tone = ride.status === 'accepted' ? 'brand' : 'sky';
+              const headline =
+                ride.role === 'requester'
+                  ? `You asked ${other.name} for a ride`
+                  : `${other.name} asked you for a ride`;
+              return (
+                <View key={ride.id} style={styles.rcard}>
+                  <View style={styles.rcHead}>
+                    <View style={{ flex: 1, paddingRight: 8 }}>
+                      <Text style={styles.rcTimeSm}>{headline}</Text>
+                      <Text style={styles.rcDate}>{formatRideWhen(ride.created_at)}</Text>
+                    </View>
+                    <Badge label={statusLabel} tone={tone} />
                   </View>
-                  <Badge label={ride.status} tone={ride.tone} />
-                </View>
-                <View style={styles.mapBox}>
-                  <Text style={styles.mapCap}>Route preview</Text>
-                </View>
-                <View style={styles.drvRow}>
-                  <Avatar initials={ride.driver.initials} color={ride.driver.color} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.drvName}>{ride.driver.name}</Text>
-                    <Text style={styles.drvVeh}>{ride.driver.vehicle}</Text>
+                  <View style={styles.mapBox}>
+                    <Text style={styles.mapCap}>Route preview</Text>
                   </View>
+                  <View style={styles.drvRow}>
+                    <Avatar initials={ini} color={C.brand} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.drvName}>{other.name}</Text>
+                      <Text style={styles.drvVeh}>{other.email}</Text>
+                    </View>
+                  </View>
+                  {ride.note ? <Text style={styles.riderHint}>{ride.note}</Text> : null}
+                  {ride.status === 'accepted' ? (
+                    <Pressable
+                      style={[styles.completeRow, actingId === ride.id && { opacity: 0.55 }]}
+                      onPress={() => respondToRequest(ride.id, 'completed')}
+                      disabled={actingId === ride.id}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: false }}
+                      accessibilityLabel="Mark ride complete to add savings and emissions to both your Impact totals"
+                    >
+                      <View style={styles.completeBox} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.completeLabel}>Mark complete</Text>
+                        <Text style={styles.completeSub}>
+                          Either of you can confirm. Moves to History and adds the estimated savings and CO₂ to
+                          both of your Impact tabs.
+                        </Text>
+                      </View>
+                    </Pressable>
+                  ) : null}
                 </View>
-                <Text style={styles.riderHint}>{ride.riderSummary}</Text>
-                {ride.estEarn != null ? (
-                  <Text style={styles.earn}>
-                    Est. earn <Text style={styles.earnBold}>+${ride.estEarn.toFixed(2)}</Text>
-                  </Text>
-                ) : null}
-              </View>
-            ))
+              );
+            })
           )}
         </>
       )}
 
       {sub === 'past' && (
         <>
-          {HISTORY.length === 0 ? (
+          {loading ? (
+            <ActivityIndicator color={C.brand} style={{ marginTop: 28 }} />
+          ) : history.length === 0 ? (
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>No ride history yet</Text>
-              <Text style={styles.emptySub}>Completed carpools will show up here.</Text>
+              <Text style={styles.emptySub}>
+                Completed, declined, or cancelled rides show up here.
+              </Text>
             </View>
           ) : (
             <View style={styles.histCard}>
-              {HISTORY.map((h, idx) => (
-                <View key={h.id} style={[styles.histRow, idx === HISTORY.length - 1 && { borderBottomWidth: 0 }]}>
-                  <Avatar initials={h.initials} color={h.color} size={32} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.histTitle}>{h.title}</Text>
-                    <Text style={styles.histSub}>{h.sub}</Text>
+              {history.map((ride, idx) => {
+                const other = ride.other_user;
+                const ini = initialsFromName(other.name);
+                const title =
+                  ride.role === 'requester'
+                    ? `Request to ${other.name}`
+                    : `Request from ${other.name}`;
+                const impactBit =
+                  ride.status === 'completed' && Number(ride.saved_usd) > 0
+                    ? ` · $${Number(ride.saved_usd).toFixed(2)} saved · ${Number(ride.co2_kg ?? 0).toFixed(1)}kg CO₂`
+                    : '';
+                const statusShort =
+                  ride.status === 'completed'
+                    ? 'Completed'
+                    : ride.status === 'declined'
+                      ? 'Declined'
+                      : ride.status === 'cancelled'
+                        ? 'Cancelled'
+                        : ride.status;
+                const subLine = `${formatRideWhen(ride.created_at)} · ${statusShort}${impactBit}`;
+                return (
+                  <View
+                    key={ride.id}
+                    style={[styles.histRow, idx === history.length - 1 && { borderBottomWidth: 0 }]}
+                  >
+                    <Avatar initials={ini} color={C.sky} size={32} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.histTitle}>{title}</Text>
+                      <Text style={styles.histSub}>{subLine}</Text>
+                    </View>
+                    <Badge label={statusShort} tone={ride.status === 'completed' ? 'brand' : 'gray'} />
                   </View>
-                  <Badge label={h.badge} tone={h.tone} />
-                </View>
-              ))}
+                );
+              })}
             </View>
           )}
         </>
@@ -182,31 +286,56 @@ export default function RidesTab({ bottomPadding, onPressFind }) {
         <>
           <View style={styles.banner}>
             <Text style={styles.bannerTxt}>
-              Post your drive so coworkers on your route can join. You earn a driver incentive per rider.
+              Incoming requests from coworkers who chose you on Find. Accept to confirm the carpool. Either of
+              you can mark it complete afterward — that adds savings and emissions to both your Impact totals.
             </Text>
           </View>
-          {DRIVING.length === 0 ? (
+          {loading ? (
+            <ActivityIndicator color={C.brand} style={{ marginTop: 28 }} />
+          ) : driving.length === 0 ? (
             <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No drives posted</Text>
-              <Text style={styles.emptySub}>Share your commute when you are driving in.</Text>
+              <Text style={styles.emptyTitle}>No pending requests</Text>
+              <Text style={styles.emptySub}>When someone requests a ride with you, it will show here.</Text>
             </View>
           ) : (
-            DRIVING.map((d) => (
-              <View key={d.id} style={styles.rcard}>
-                <View style={styles.rcHead}>
-                  <Text style={styles.rcTimeSm}>{d.dateLabel}</Text>
-                  <Badge label={d.status} tone="amber" />
-                </View>
-                <Text style={styles.rcDate}>{d.line}</Text>
-                <View style={styles.pips}>
-                  {d.pips.map((p) => (
-                    <View key={p.initials} style={[styles.pip, { backgroundColor: p.color }]}>
-                      <Text style={styles.pipTxt}>{p.initials}</Text>
+            driving.map((ride) => {
+              const other = ride.other_user;
+              const ini = initialsFromName(other.name);
+              const busy = actingId === ride.id;
+              return (
+                <View key={ride.id} style={styles.rcard}>
+                  <View style={styles.rcHead}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.rcTimeSm}>{other.name}</Text>
+                      <Text style={styles.rcDate}>{formatRideWhen(ride.created_at)}</Text>
                     </View>
-                  ))}
+                    <Badge label="Requested" tone="amber" />
+                  </View>
+                  <Text style={styles.rcDate}>{other.email}</Text>
+                  <View style={styles.pips}>
+                    <View style={[styles.pip, { backgroundColor: C.sky }]}>
+                      <Text style={styles.pipTxt}>{ini}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.drvActions}>
+                    <Pressable
+                      style={[styles.acceptBtn, busy && { opacity: 0.5 }]}
+                      disabled={busy}
+                      onPress={() => respondToRequest(ride.id, 'accepted')}
+                    >
+                      <Text style={styles.acceptBtnTxt}>Accept</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.declineBtn, busy && { opacity: 0.5 }]}
+                      disabled={busy}
+                      onPress={() => respondToRequest(ride.id, 'declined')}
+                    >
+                      <Text style={styles.declineBtnTxt}>Decline</Text>
+                    </Pressable>
+                  </View>
                 </View>
-              </View>
-            ))
+              );
+            })
           )}
         </>
       )}
@@ -226,7 +355,7 @@ const styles = StyleSheet.create({
   title: { color: C.text, fontSize: 28, fontWeight: '800' },
   sub: { color: C.muted, fontSize: 13, marginTop: 4 },
   findBtn: { backgroundColor: C.brand, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
-  findBtnTxt: { color: '#021b14', fontSize: 12, fontWeight: '800' },
+  findBtnTxt: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   tabRow: {
     flexDirection: 'row',
     marginHorizontal: 16,
@@ -275,6 +404,30 @@ const styles = StyleSheet.create({
   drvName: { fontSize: 14, fontWeight: '600', color: C.text },
   drvVeh: { fontSize: 12, color: C.muted, marginTop: 2 },
   riderHint: { fontSize: 12, color: C.muted, marginTop: 10 },
+  impactHint: { fontSize: 12, color: C.brand, marginTop: 8, fontWeight: '600' },
+  completeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginTop: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.line,
+    backgroundColor: 'rgba(0,200,150,0.06)',
+  },
+  completeBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: C.brand,
+    marginTop: 2,
+    backgroundColor: 'transparent',
+  },
+  completeLabel: { fontSize: 14, fontWeight: '700', color: C.text },
+  completeSub: { fontSize: 12, color: C.muted, marginTop: 4, lineHeight: 17 },
   earn: { fontSize: 13, color: C.muted, marginTop: 8 },
   earnBold: { color: C.brand, fontWeight: '800' },
   histCard: {
@@ -306,6 +459,25 @@ const styles = StyleSheet.create({
     borderColor: C.brand,
   },
   bannerTxt: { fontSize: 13, color: C.brand, lineHeight: 19 },
+  drvActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  acceptBtn: {
+    flex: 1,
+    backgroundColor: C.brand,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  acceptBtnTxt: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  declineBtn: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  declineBtnTxt: { color: C.text, fontSize: 14, fontWeight: '700' },
   pips: { flexDirection: 'row', marginTop: 10 },
   pip: {
     width: 30,
@@ -326,7 +498,10 @@ const styles = StyleSheet.create({
     backgroundColor: C.brand,
     borderRadius: 12,
     paddingVertical: 12,
+    paddingHorizontal: 16,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
   },
-  primaryTxt: { color: '#021b14', fontSize: 14, fontWeight: '800' },
+  primaryTxt: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', textAlign: 'center' },
 });

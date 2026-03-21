@@ -166,3 +166,72 @@ export async function saveOnboarding(accessToken, payload) {
   }
   return data;
 }
+
+/**
+ * @returns {Promise<{ rides: Array<{ id: number, status: string, role: string, other_user: { id: number, email: string, name: string }, note: string, created_at: string }> }>}
+ */
+export async function getRides(accessToken) {
+  const res = await apiFetch(`${API_BASE_URL}/rides`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(parseErrorDetail(data, 'Could not load rides'));
+  }
+  return data;
+}
+
+/**
+ * @param {{ driver_id: number, note?: string }} body
+ */
+export async function createRideRequest(accessToken, body) {
+  const res = await apiFetch(`${API_BASE_URL}/rides`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      driver_id: body.driver_id,
+      note: (body.note ?? '').trim(),
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(parseErrorDetail(data, 'Could not send ride request'));
+  }
+  return data;
+}
+
+/**
+ * @param {'accepted' | 'declined' | 'cancelled' | 'completed'} status
+ */
+/**
+ * @returns {Promise<{ total_saved: number, total_co2_kg: number, rides_shared: number, weekly: Array<{ d: string, v: number }> }>}
+ */
+export async function getImpact(accessToken) {
+  const res = await apiFetch(`${API_BASE_URL}/impact`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(parseErrorDetail(data, 'Could not load impact'));
+  }
+  return data;
+}
+
+export async function patchRideStatus(accessToken, rideId, status) {
+  const res = await apiFetch(`${API_BASE_URL}/rides/${rideId}`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ status }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(parseErrorDetail(data, 'Could not update ride'));
+  }
+  return data;
+}
