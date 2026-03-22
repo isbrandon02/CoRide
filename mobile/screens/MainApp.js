@@ -507,6 +507,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
               accessToken={accessToken}
               accountEmail={accountEmail}
               onLogout={onLogout}
+              onSaveSuccess={() => setTab('home')}
               scrollBottomPadding={Math.max(insets.bottom, 16) + 24}
               editSignal={profileEditSignal}
               embeddedProfileChrome={false}

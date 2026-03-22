@@ -107,6 +107,7 @@ export default function ProfileSettingsScreen({
   accessToken,
   accountEmail,
   onLogout,
+  onSaveSuccess,
   scrollBottomPadding = 100,
   /** Increment from parent (e.g. Home menu) to open the screen in edit mode. */
   editSignal = 0,
@@ -233,6 +234,7 @@ export default function ProfileSettingsScreen({
       });
       setSavedProfile((prev) => ({ ...(prev ?? {}), ...payload }));
       setEditMode(false);
+      onSaveSuccess?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong');
     } finally {
