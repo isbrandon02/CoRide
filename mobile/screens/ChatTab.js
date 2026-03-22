@@ -17,6 +17,7 @@ import {
   getChatCandidates,
   getChatConversations,
   getChatMessages,
+  openOrGetDm,
   renameChatConversation,
   sendChatMessage,
 } from '../src/auth';
@@ -247,6 +248,12 @@ export function ChatList({ accessToken, refreshKey = 0, bottomPadding, onOpenThr
     };
   }, [accessToken, mode]);
 
+  useEffect(() => {
+    if (selectedIds.length <= 1 && groupTitle) {
+      setGroupTitle('');
+    }
+  }, [selectedIds.length, groupTitle]);
+
   const filteredCandidates = candidates.filter((item) => {
     const q = candidateSearch.trim().toLowerCase();
     if (!q) return true;
@@ -270,14 +277,20 @@ export function ChatList({ accessToken, refreshKey = 0, bottomPadding, onOpenThr
   }
 
   async function handleCreateGroup() {
-    if (!accessToken || selectedIds.length < 2 || createBusy) return;
+    if (!accessToken || selectedIds.length < 1 || createBusy) return;
     setCreateBusy(true);
     try {
-      const data = await createGroupChat(accessToken, {
-        user_ids: selectedIds,
-        title: groupTitle,
-      });
-      const opened = { id: String(data.conversation_id), title: data.title, is_group: true };
+      let opened;
+      if (selectedIds.length === 1) {
+        const data = await openOrGetDm(accessToken, selectedIds[0]);
+        opened = { id: String(data.conversation_id), title: data.title, is_group: false };
+      } else {
+        const data = await createGroupChat(accessToken, {
+          user_ids: selectedIds,
+          title: groupTitle,
+        });
+        opened = { id: String(data.conversation_id), title: data.title, is_group: true };
+      }
       resetGroupComposer();
       onOpenThread(opened);
     } catch (e) {
@@ -294,17 +307,19 @@ export function ChatList({ accessToken, refreshKey = 0, bottomPadding, onOpenThr
           <AppPressable variant="link" style={styles.backHit} onPress={resetGroupComposer}>
             <Text style={styles.back}>‹ Back</Text>
           </AppPressable>
-          <Text style={styles.title}>New Group</Text>
+          <Text style={styles.title}>New Chat</Text>
           <View style={{ width: 56 }} />
         </View>
         <View style={styles.composeWrap}>
-          <TextInput
-            value={groupTitle}
-            onChangeText={setGroupTitle}
-            placeholder="Group name (optional)"
-            placeholderTextColor={C.faint}
-            style={styles.composeInput}
-          />
+          {selectedIds.length > 1 ? (
+            <TextInput
+              value={groupTitle}
+              onChangeText={setGroupTitle}
+              placeholder="Group name (optional)"
+              placeholderTextColor={C.faint}
+              style={styles.composeInput}
+            />
+          ) : null}
           <TextInput
             value={candidateSearch}
             onChangeText={setCandidateSearch}
@@ -312,7 +327,11 @@ export function ChatList({ accessToken, refreshKey = 0, bottomPadding, onOpenThr
             placeholderTextColor={C.faint}
             style={styles.composeInput}
           />
-          <Text style={styles.composeHint}>Choose at least two coworkers to start a group chat.</Text>
+          <Text style={styles.composeHint}>
+            {selectedIds.length > 1
+              ? 'Choose multiple coworkers to create a group chat.'
+              : 'Choose one coworker for a direct message, or select more than one to make a group chat.'}
+          </Text>
           {selectedIds.length > 0 ? (
             <View style={styles.selectedWrap}>
               {selectedIds.map((id) => {
@@ -369,11 +388,13 @@ export function ChatList({ accessToken, refreshKey = 0, bottomPadding, onOpenThr
         <View style={[styles.createFooter, { paddingBottom: Math.max(bottomPadding, 12) }]}>
           <AppPressable
             variant="primary"
-            style={[styles.createGroupBtn, (selectedIds.length < 2 || createBusy) && styles.dimmed]}
+            style={[styles.createGroupBtn, (selectedIds.length < 1 || createBusy) && styles.dimmed]}
             onPress={handleCreateGroup}
-            disabled={selectedIds.length < 2 || createBusy}
+            disabled={selectedIds.length < 1 || createBusy}
           >
-            <Text style={styles.createGroupTxt}>{createBusy ? 'Creating...' : 'Create group'}</Text>
+            <Text style={styles.createGroupTxt}>
+              {createBusy ? 'Creating...' : selectedIds.length > 1 ? 'Create group' : 'Start chat'}
+            </Text>
           </AppPressable>
         </View>
       </View>
@@ -385,7 +406,7 @@ export function ChatList({ accessToken, refreshKey = 0, bottomPadding, onOpenThr
       <View style={styles.head}>
         <Text style={styles.title}>Messages</Text>
         <AppPressable variant="ghost" style={styles.ghostBtn} onPress={() => setMode('create')}>
-          <Text style={styles.ghostText}>+ Group</Text>
+          <Text style={styles.ghostText}>+ New</Text>
         </AppPressable>
       </View>
       {loading ? (
