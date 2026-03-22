@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import AppPressable from '../components/AppPressable';
 import { getImpact, getLeaderboard } from '../src/auth';
+import { formatCurrency } from '../src/currency';
 
 const C = {
   bg: '#0a0a0f',
@@ -158,7 +159,7 @@ function initialsFromName(name, email) {
 function formatMetricValue(metric, row) {
   if (metric === 'score') return `${Math.round(Number(row.score ?? 0))}`;
   if (metric === 'total_co2_kg') return `${Number(row.total_co2_kg ?? 0).toFixed(1)} kg`;
-  if (metric === 'total_saved') return `$${Number(row.total_saved ?? 0).toFixed(2)}`;
+  if (metric === 'total_saved') return formatCurrency(row.total_saved);
   return '';
 }
 

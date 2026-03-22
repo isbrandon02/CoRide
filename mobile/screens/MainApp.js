@@ -25,6 +25,7 @@ import {
   openOrGetDm,
   patchRideStatus,
 } from '../src/auth';
+import { formatCurrency } from '../src/currency';
 import { ChatList, ChatThread } from './ChatTab';
 import GoalsScreen from './GoalsScreen';
 import ProfileSettingsScreen from './ProfileSettingsScreen';
@@ -329,7 +330,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
     return () => {
       live = false;
     };
-  }, [accessToken, ridesRefreshKey]);
+  }, [accessToken, ridesRefreshKey, tab]);
 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -603,7 +604,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
       ) : (
         <View style={s.stats}>
           <View style={s.stat}>
-            <Text style={[s.statNum, { color: C.brand }]}>${impact.saved}</Text>
+            <Text style={[s.statNum, { color: C.brand }]}>{formatCurrency(impact.saved)}</Text>
             <Text style={s.statKey}>Saved</Text>
           </View>
           <View style={s.stat}>
@@ -636,7 +637,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
                 </View>
                 <Text style={s.weekText}>
                   {row.rides > 0
-                    ? `${row.rides} ride${row.rides === 1 ? '' : 's'} · $${Number(row.v).toFixed(2)} saved`
+                    ? `${row.rides} ride${row.rides === 1 ? '' : 's'} · ${formatCurrency(row.v)} saved`
                     : 'No shared rides'}
                 </Text>
               </View>
@@ -1644,12 +1645,12 @@ function FindMatchesList({
               </View>
             </View>
             <View style={s.metricsRow}>
-              <View style={[s.metric, { paddingVertical: 12 }]}>
-                <Text style={[s.metricNum, s.metricNumEmphasis, { color: C.brand }]}>
-                  ${Number(m.cost ?? 0).toFixed(2)}
-                </Text>
-                <Text style={[s.metricKey, s.metricKeyEmphasis]}>Your share</Text>
-              </View>
+            <View style={[s.metric, { paddingVertical: 12 }]}>
+              <Text style={[s.metricNum, s.metricNumEmphasis, { color: C.brand }]}>
+                  {formatCurrency(m.cost)}
+              </Text>
+              <Text style={[s.metricKey, s.metricKeyEmphasis]}>Your share</Text>
+            </View>
               <View style={[s.metric, { paddingVertical: 12 }]}>
                 <Text style={[s.metricNum, s.metricNumEmphasis, { color: C.sky }]}>
                   {Number(m.co2 ?? 0).toFixed(1)}kg

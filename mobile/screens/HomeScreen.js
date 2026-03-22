@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import AppPressable from '../components/AppPressable';
 import { getImpact, getMatches } from '../src/auth';
+import { formatCurrency } from '../src/currency';
 
 const bg = '#0B0B0C';
 const surface = '#1C1C1E';
@@ -252,7 +253,7 @@ export default function HomeScreen({
 
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: green }]}>${impact.saved}</Text>
+            <Text style={[styles.statValue, { color: green }]}>{formatCurrency(impact.saved)}</Text>
             <Text style={styles.statLabel}>SAVED</Text>
           </View>
           <View style={styles.statCard}>

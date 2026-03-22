@@ -50,6 +50,13 @@ function shortAddress(address) {
   return line.length > 34 ? `${line.slice(0, 31)}...` : line;
 }
 
+function ridePoints(ride) {
+  if (ride?.status !== 'completed') return 0;
+  const saved = Number(ride.saved_usd ?? 0) || 0;
+  const co2 = Number(ride.co2_kg ?? 0) || 0;
+  return Math.round(saved * 8 + co2 * 20 + 12);
+}
+
 function buildStaticMapUrl({ apiKey, origin, destination, polyline }) {
   if (!apiKey || !origin || !destination) return null;
   const params = new URLSearchParams({
@@ -543,6 +550,7 @@ export default function RidesTab({
                       : ride.status === 'cancelled'
                         ? 'Cancelled'
                         : ride.status;
+                const pointsLabel = `+${ridePoints(ride)}`;
                 const subLine = `${formatRideWhen(ride.created_at)} · ${statusShort}${impactBit}`;
                 return (
                   <View
@@ -554,7 +562,7 @@ export default function RidesTab({
                       <Text style={styles.histTitle}>{title}</Text>
                       <Text style={styles.histSub}>{subLine}</Text>
                     </View>
-                    <Badge label={statusShort} tone={ride.status === 'completed' ? 'brand' : 'gray'} />
+                    <Badge label={pointsLabel} tone={ride.status === 'completed' ? 'brand' : 'gray'} />
                   </View>
                 );
               })}
