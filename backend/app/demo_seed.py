@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.models import Ride, User, UserProfile, UserVehicle
+from app.models import ChatConversation, ChatMessage, ChatParticipant, Ride, User, UserProfile, UserVehicle
 from app.security import get_password_hash
 
 logger = logging.getLogger(__name__)
@@ -20,6 +20,51 @@ logger = logging.getLogger(__name__)
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 DATA_PATH = BACKEND_ROOT / "data" / "demo_accounts.json"
 RIDES_PATH = BACKEND_ROOT / "data" / "demo_rides.json"
+CHATS_SEED_PATH = BACKEND_ROOT / "seed_data" / "demo_chats.json"
+PROFILE_PHOTOS_PATH = BACKEND_ROOT / "seed_data" / "demo_profile_photos.json"
+
+
+def apply_demo_profile_photos() -> tuple[int, int]:
+    """
+    Set avatar_url from seed_data/demo_profile_photos.json when profile avatar is still empty.
+    Returns (updated_count, 0).
+    """
+    if not PROFILE_PHOTOS_PATH.is_file():
+        return (0, 0)
+    with open(PROFILE_PHOTOS_PATH, encoding="utf-8") as f:
+        payload = json.load(f)
+    if not isinstance(payload, dict) or not payload:
+        return (0, 0)
+
+    db: Session = SessionLocal()
+    updated = 0
+    try:
+        for email_raw, url in payload.items():
+            email = str(email_raw).strip().lower()
+            url_s = str(url).strip()
+            if not url_s:
+                continue
+            u = db.query(User).filter(User.email == email).first()
+            if u is None:
+                continue
+            p = db.get(UserProfile, u.id)
+            if p is None:
+                continue
+            if (p.avatar_url or "").strip():
+                continue
+            p.avatar_url = url_s
+            updated += 1
+        if updated:
+            db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+    if updated:
+        logger.info("Demo profile photos: %s profile(s) updated", updated)
+    return (updated, 0)
 
 
 def seed_demo_accounts() -> tuple[int, int]:
@@ -68,6 +113,7 @@ def seed_demo_accounts() -> tuple[int, int]:
                 office_address=row.get("office_address", "").strip(),
                 hobbies=_hobbies_with_meta(row),
                 commute_route=row.get("commute_route", "").strip(),
+                avatar_url=(row.get("avatar_url") or "").strip(),
                 work_schedule={
                     "days": str(ws.get("days", "")),
                     "start_time": str(ws.get("start_time", "")),
@@ -194,3 +240,101 @@ def seed_demo_rides() -> tuple[int, int]:
     if created:
         logger.info("Demo rides: %s row(s) inserted", created)
     return (created, 0)
+
+
+def seed_demo_chats() -> tuple[int, int]:
+    """
+    Insert demo DM threads from seed_data/demo_chats.json when chat_messages is empty.
+    Returns (message_count_inserted, 0).
+    """
+    if not CHATS_SEED_PATH.is_file():
+        logger.debug("Demo chats seed skipped: missing %s", CHATS_SEED_PATH)
+        return (0, 0)
+
+    with open(CHATS_SEED_PATH, encoding="utf-8") as f:
+        payload = json.load(f)
+
+    dm_threads = payload.get("threads") or []
+    group_threads = payload.get("group_threads") or []
+    if not dm_threads and not group_threads:
+        return (0, 0)
+
+    db: Session = SessionLocal()
+    inserted = 0
+    try:
+        existing = db.scalar(select(func.count()).select_from(ChatMessage)) or 0
+        if existing > 0:
+            logger.debug("Demo chats seed skipped: chat_messages already has %s row(s)", existing)
+            return (0, 0)
+
+        users_list = db.query(User).all()
+        users = {u.email.strip().lower(): u for u in users_list}
+        now = datetime.now(timezone.utc)
+
+        def add_messages_for_conv(conv_id: int, raw_msgs: list) -> None:
+            nonlocal inserted
+            ordered = sorted(raw_msgs, key=lambda m: int(m.get("minutes_ago", 0)), reverse=True)
+            for row in ordered:
+                fe = (row.get("from_email") or "").strip().lower()
+                sender = users.get(fe)
+                if sender is None:
+                    continue
+                body = (row.get("body") or "").strip()
+                if not body:
+                    continue
+                mins = int(row.get("minutes_ago", 0))
+                created_at = now - timedelta(minutes=mins)
+                db.add(
+                    ChatMessage(
+                        conversation_id=conv_id,
+                        sender_id=sender.id,
+                        body=body,
+                        created_at=created_at,
+                    )
+                )
+                inserted += 1
+
+        for thread in dm_threads:
+            emails = [e.strip().lower() for e in thread.get("participants") or []]
+            if len(emails) != 2:
+                continue
+            u0 = users.get(emails[0])
+            u1 = users.get(emails[1])
+            if u0 is None or u1 is None:
+                logger.warning("Demo chat thread skipped: missing user(s) %s", emails)
+                continue
+
+            conv = ChatConversation(created_at=now - timedelta(days=1))
+            db.add(conv)
+            db.flush()
+            db.add(ChatParticipant(conversation_id=conv.id, user_id=u0.id))
+            db.add(ChatParticipant(conversation_id=conv.id, user_id=u1.id))
+            add_messages_for_conv(conv.id, thread.get("messages") or [])
+
+        for thread in group_threads:
+            emails = [e.strip().lower() for e in thread.get("participants") or []]
+            if len(emails) < 3:
+                continue
+            part_users = [users.get(e) for e in emails]
+            if any(u is None for u in part_users):
+                logger.warning("Demo group chat skipped: missing user(s) %s", emails)
+                continue
+            gtitle = (thread.get("title") or "").strip()
+            conv = ChatConversation(title=gtitle, created_at=now - timedelta(days=2))
+            db.add(conv)
+            db.flush()
+            for u in part_users:
+                db.add(ChatParticipant(conversation_id=conv.id, user_id=u.id))
+            add_messages_for_conv(conv.id, thread.get("messages") or [])
+
+        if inserted:
+            db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+    if inserted:
+        logger.info("Demo chats: %s message(s) inserted", inserted)
+    return (inserted, 0)

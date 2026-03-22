@@ -45,6 +45,7 @@ class OnboardingPut(BaseModel):
     office_address: str = Field(..., min_length=1, max_length=2000)
     hobbies: str = Field(default="", max_length=2000)
     commute_route: str = Field(default="", max_length=2000)
+    avatar_url: str = Field(default="", max_length=2048)
     work_schedule: WorkScheduleIn = Field(default_factory=WorkScheduleIn)
     vehicle: VehicleIn = Field(default_factory=VehicleIn)
 
@@ -67,6 +68,7 @@ class ProfileOut(BaseModel):
     office_address: str
     hobbies: str
     commute_route: str
+    avatar_url: str = ""
     work_schedule: WorkScheduleOut
     vehicle: VehicleOut
     onboarding_completed: bool
@@ -131,3 +133,49 @@ class ImpactResponse(BaseModel):
     total_co2_kg: float
     rides_shared: int
     weekly: list[dict[str, Any]]
+
+
+class ChatDmCreate(BaseModel):
+    other_user_id: int = Field(..., ge=1)
+
+
+class ChatDmOut(BaseModel):
+    conversation_id: int
+    title: str
+
+
+class ChatMemberFace(BaseModel):
+    user_id: int
+    display_name: str
+    avatar_url: str | None = None
+
+
+class ChatConversationListItem(BaseModel):
+    id: int
+    title: str
+    preview: str
+    time: str
+    is_group: bool = False
+    members: list[ChatMemberFace] = Field(default_factory=list)
+    extra_member_count: int = 0
+
+
+class ChatConversationsResponse(BaseModel):
+    conversations: list[ChatConversationListItem]
+
+
+class ChatMessageOut(BaseModel):
+    id: int
+    sender_id: int
+    body: str
+    created_at: datetime
+    is_me: bool
+    sender_name: str = ""
+
+
+class ChatMessagesResponse(BaseModel):
+    messages: list[ChatMessageOut]
+
+
+class ChatMessageCreate(BaseModel):
+    body: str = Field(..., min_length=1, max_length=4000)

@@ -235,3 +235,69 @@ export async function patchRideStatus(accessToken, rideId, status) {
   }
   return data;
 }
+
+/**
+ * @returns {Promise<{ conversations: Array<{ id: number, title: string, preview: string, time: string }> }>}
+ */
+export async function getChatConversations(accessToken) {
+  const res = await apiFetch(`${API_BASE_URL}/chats`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(parseErrorDetail(data, 'Could not load conversations'));
+  }
+  return data;
+}
+
+/**
+ * @returns {Promise<{ conversation_id: number, title: string }>}
+ */
+export async function openOrGetDm(accessToken, otherUserId) {
+  const res = await apiFetch(`${API_BASE_URL}/chats/dm`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ other_user_id: otherUserId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(parseErrorDetail(data, 'Could not open chat'));
+  }
+  return data;
+}
+
+/**
+ * @returns {Promise<{ messages: Array<{ id: number, sender_id: number, body: string, created_at: string, is_me: boolean, sender_name?: string }> }>}
+ */
+export async function getChatMessages(accessToken, conversationId) {
+  const res = await apiFetch(`${API_BASE_URL}/chats/${conversationId}/messages`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(parseErrorDetail(data, 'Could not load messages'));
+  }
+  return data;
+}
+
+/**
+ * @returns {Promise<{ id: number, sender_id: number, body: string, created_at: string, is_me: boolean, sender_name?: string }>}
+ */
+export async function sendChatMessage(accessToken, conversationId, body) {
+  const res = await apiFetch(`${API_BASE_URL}/chats/${conversationId}/messages`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ body }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(parseErrorDetail(data, 'Could not send message'));
+  }
+  return data;
+}

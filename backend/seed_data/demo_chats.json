@@ -1,0 +1,83 @@
+{
+  "threads": [
+    {
+      "participants": ["alex.kim@example.com", "jordan.rivera@example.com"],
+      "messages": [
+        {
+          "from_email": "alex.kim@example.com",
+          "body": "Hey Jordan — still good for 8:15 tomorrow?",
+          "minutes_ago": 180
+        },
+        {
+          "from_email": "jordan.rivera@example.com",
+          "body": "Yep, I'll swing by the usual lot.",
+          "minutes_ago": 175
+        },
+        {
+          "from_email": "alex.kim@example.com",
+          "body": "Perfect, thanks!",
+          "minutes_ago": 170
+        }
+      ]
+    },
+    {
+      "participants": ["sam.patel@example.com", "morgan.lee@example.com"],
+      "messages": [
+        {
+          "from_email": "morgan.lee@example.com",
+          "body": "Traffic on the bridge was rough this morning.",
+          "minutes_ago": 400
+        },
+        {
+          "from_email": "sam.patel@example.com",
+          "body": "Yeah I took 237 instead. Want to try that Wednesday?",
+          "minutes_ago": 395
+        }
+      ]
+    },
+    {
+      "participants": ["casey.nguyen@example.com", "sam.patel@example.com"],
+      "messages": [
+        {
+          "from_email": "casey.nguyen@example.com",
+          "body": "Hey Sam — open to driving Thursday?",
+          "minutes_ago": 60
+        },
+        {
+          "from_email": "sam.patel@example.com",
+          "body": "Thursday works. Ping me Wednesday night.",
+          "minutes_ago": 55
+        }
+      ]
+    }
+  ],
+  "group_threads": [
+    {
+      "title": "SF office carpool",
+      "participants": [
+        "alex.kim@example.com",
+        "jordan.rivera@example.com",
+        "sam.patel@example.com",
+        "morgan.lee@example.com",
+        "casey.nguyen@example.com"
+      ],
+      "messages": [
+        {
+          "from_email": "alex.kim@example.com",
+          "body": "Everyone good for 8:30 at the usual spot?",
+          "minutes_ago": 95
+        },
+        {
+          "from_email": "sam.patel@example.com",
+          "body": "I'm in — see you there.",
+          "minutes_ago": 88
+        },
+        {
+          "from_email": "morgan.lee@example.com",
+          "body": "Running 5 min late, save me a spot?",
+          "minutes_ago": 82
+        }
+      ]
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -77,6 +78,28 @@ function displayStatusFromProfile(profile) {
   return String(profile?.status ?? '').trim();
 }
 
+function ProfileHeroFace({ email, avatarUrl }) {
+  const [failed, setFailed] = useState(false);
+  const u = (avatarUrl || '').trim();
+  useEffect(() => {
+    setFailed(false);
+  }, [u]);
+  const show = u && !failed && (u.startsWith('http') || u.startsWith('data:image'));
+  if (show) {
+    return (
+      <Image
+        accessibilityIgnoresInvertColors
+        source={{ uri: u }}
+        style={{ width: 62, height: 62, borderRadius: 31 }}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  return (
+    <Text style={{ color: '#F5F5F7', fontSize: 22, fontWeight: '700' }}>{profileInitials(email)}</Text>
+  );
+}
+
 function SummaryPill({ label: pillLabel, value, accentTone = false }) {
   return (
     <View style={[styles.summaryPill, accentTone && styles.summaryPillAccent]}>
@@ -134,6 +157,7 @@ export default function ProfileSettingsScreen({
   const [carModel, setCarModel] = useState('');
   const [carYear, setCarYear] = useState('');
   const [carColor, setCarColor] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
   const [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [loadingProfile, setLoadingProfile] = useState(true);
@@ -163,6 +187,7 @@ export default function ProfileSettingsScreen({
     setCarModel(String(vehicle.model ?? ''));
     setCarYear(vehicle.year != null && vehicle.year !== '' ? String(vehicle.year) : '');
     setCarColor(String(vehicle.color ?? ''));
+    setAvatarUrl(String(profile.avatar_url ?? '').trim());
   }
 
   function buildProfilePayload() {
@@ -224,15 +249,20 @@ export default function ProfileSettingsScreen({
     setSaving(true);
     try {
       const payload = buildProfilePayload();
-      await saveOnboarding(accessToken, {
+      const data = await saveOnboarding(accessToken, {
         home_address: payload.home_address,
         office_address: payload.office_address,
         hobbies: payload.hobbies,
         commute_route: payload.commute_route,
+        avatar_url: avatarUrl.trim(),
         work_schedule: payload.work_schedule,
         vehicle: payload.vehicle,
       });
-      setSavedProfile((prev) => ({ ...(prev ?? {}), ...payload }));
+      setSavedProfile((prev) => ({
+        ...(prev ?? {}),
+        ...payload,
+        avatar_url: data?.avatar_url ?? avatarUrl.trim(),
+      }));
       setEditMode(false);
       onSaveSuccess?.();
     } catch (e) {
@@ -337,7 +367,7 @@ export default function ProfileSettingsScreen({
         <View style={styles.heroCard}>
           <View style={styles.heroTop}>
             <View style={styles.avatarBadge}>
-              <Text style={styles.avatarBadgeText}>{profileInitials(accountEmail)}</Text>
+              <ProfileHeroFace email={accountEmail} avatarUrl={avatarUrl} />
             </View>
             <View style={styles.heroTextWrap}>
               <Text style={styles.title}>Profile</Text>
@@ -402,6 +432,22 @@ export default function ProfileSettingsScreen({
               <SummaryPill label="Status" value={displayStatus} />
             )}
           </View>
+          {editMode ? (
+            <View style={{ marginTop: 14, width: '100%' }}>
+              <Text style={styles.photoUrlLabel}>Profile photo URL (optional)</Text>
+              <TextInput
+                style={styles.photoUrlInput}
+                value={avatarUrl}
+                onChangeText={setAvatarUrl}
+                placeholder="https://…"
+                placeholderTextColor={muted}
+                editable={!saving}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Text style={styles.photoUrlHint}>Shown in Messages. Leave empty to use your initials.</Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.sectionCard}>
@@ -726,6 +772,28 @@ const styles = StyleSheet.create({
     color: '#F5F5F7',
     fontSize: 22,
     fontWeight: '700',
+  },
+  photoUrlLabel: {
+    color: label,
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  photoUrlInput: {
+    backgroundColor: surface,
+    borderWidth: 1,
+    borderColor: border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: text,
+  },
+  photoUrlHint: {
+    color: muted,
+    fontSize: 12,
+    marginTop: 6,
+    lineHeight: 17,
   },
   heroTextWrap: {
     flex: 1,

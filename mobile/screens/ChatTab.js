@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -10,6 +12,7 @@ import {
 } from 'react-native';
 
 import AppPressable from '../components/AppPressable';
+import { getChatConversations, getChatMessages, sendChatMessage } from '../src/auth';
 
 const C = {
   panel: '#111118',
@@ -21,8 +24,36 @@ const C = {
   sky: '#4ea8f5',
 };
 
-function timeNow() {
-  return new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+const AVATAR_PALETTE = ['#00c896', '#4ea8f5', '#f5a623', '#a78bfa', '#f472b6', '#fb7185', '#22d3ee'];
+
+function accentForUser(userId) {
+  const n = Number(userId);
+  const i = Number.isFinite(n) ? Math.abs(n) : 0;
+  return AVATAR_PALETTE[i % AVATAR_PALETTE.length];
+}
+
+function formatConvTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function formatMsgTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function initialsFromName(name) {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  return parts
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join('')
+    .toUpperCase();
 }
 
 function Avatar({ initials, color, size = 32 }) {
@@ -33,16 +64,151 @@ function Avatar({ initials, color, size = 32 }) {
   );
 }
 
+function PhotoOrInitials({ uri, name, userId, size = 40 }) {
+  const [failed, setFailed] = useState(false);
+  const color = accentForUser(userId);
+  const ini = initialsFromName(name);
+  const u = typeof uri === 'string' ? uri.trim() : '';
+  const showImg =
+    u.length > 0 &&
+    !failed &&
+    (u.startsWith('http://') || u.startsWith('https://') || u.startsWith('data:image'));
+
+  if (showImg) {
+    return (
+      <Image
+        accessibilityIgnoresInvertColors
+        source={{ uri: u }}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: 'rgba(255,255,255,0.06)',
+        }}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  return <Avatar initials={ini} color={color} size={size} />;
+}
+
+function ConversationRowAvatar({ members, isGroup, extraCount, fallbackTitle, fallbackConvId }) {
+  const raw = Array.isArray(members) ? members : [];
+  const list = raw
+    .map((m) => {
+      if (!m || typeof m !== 'object') return null;
+      const uid = Number(m.user_id ?? m.userId);
+      const displayName = String(m.display_name ?? m.displayName ?? '').trim();
+      const av = m.avatar_url ?? m.avatarUrl;
+      return {
+        user_id: Number.isFinite(uid) && uid > 0 ? uid : 0,
+        display_name: displayName || '?',
+        avatar_url: typeof av === 'string' && av.trim() ? av.trim() : null,
+      };
+    })
+    .filter((m) => m && m.user_id > 0);
+
+  if (!list.length) {
+    const fid = Number(fallbackConvId) || 0;
+    return (
+      <PhotoOrInitials
+        uri={null}
+        name={fallbackTitle || 'Chat'}
+        userId={fid}
+        size={50}
+      />
+    );
+  }
+  if (!isGroup && list.length === 1) {
+    const m = list[0];
+    return (
+      <PhotoOrInitials
+        uri={m.avatar_url}
+        name={m.display_name}
+        userId={m.user_id}
+        size={50}
+      />
+    );
+  }
+  const stack = list.slice(0, 4);
+  const n = stack.length;
+  const size = n >= 4 ? 28 : n === 3 ? 30 : 34;
+  return (
+    <View style={styles.stackWrap}>
+      {stack.map((m, i) => (
+        <View
+          key={String(m.user_id)}
+          style={[styles.stackItem, { marginLeft: i === 0 ? 0 : -11, zIndex: 20 - i }]}
+        >
+          <View style={styles.stackRing}>
+            <PhotoOrInitials
+              uri={m.avatar_url}
+              name={m.display_name}
+              userId={m.user_id}
+              size={size}
+            />
+          </View>
+        </View>
+      ))}
+      {extraCount > 0 ? (
+        <View style={[styles.stackItem, { marginLeft: -8, zIndex: 0 }]}>
+          <View style={styles.plusBadge}>
+            <Text style={styles.plusBadgeTxt}>+{extraCount}</Text>
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 const aStyles = StyleSheet.create({
   av: { alignItems: 'center', justifyContent: 'center' },
   avText: { color: '#fff', fontWeight: '800' },
 });
 
 /**
- * @param {{ bottomPadding: number, onOpenThread: (c: { id: string, title: string, preview?: string, time?: string }) => void }} props
+ * @param {{ accessToken: string | null, refreshKey?: number, bottomPadding: number, onOpenThread: (c: object) => void }} props
  */
-export function ChatList({ onOpenThread, bottomPadding }) {
-  const conversations = [];
+export function ChatList({ accessToken, refreshKey = 0, bottomPadding, onOpenThread }) {
+  const [conversations, setConversations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!accessToken) {
+      setConversations([]);
+      setLoading(false);
+      return;
+    }
+    let live = true;
+    setLoading(true);
+    setError(null);
+    getChatConversations(accessToken)
+      .then((data) => {
+        if (!live) return;
+        const list = data.conversations ?? [];
+        setConversations(
+          list.map((c) => ({
+            id: String(c.id),
+            title: c.title,
+            preview: c.preview || '',
+            time: formatConvTime(c.time),
+            is_group: !!(c.is_group ?? c.isGroup),
+            members: Array.isArray(c.members) ? c.members : [],
+            extra_member_count: Number(c.extra_member_count ?? c.extraMemberCount) || 0,
+          })),
+        );
+      })
+      .catch((e) => {
+        if (live) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [accessToken, refreshKey]);
 
   return (
     <View style={styles.flex}>
@@ -52,49 +218,118 @@ export function ChatList({ onOpenThread, bottomPadding }) {
           <Text style={[styles.ghostText, { opacity: 0.45 }]}>+ Group</Text>
         </AppPressable>
       </View>
-      <FlatList
-        data={conversations}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={[styles.listPad, { paddingBottom: bottomPadding }]}
-        ListEmptyComponent={
-          <View style={styles.emptyInbox}>
-            <Text style={styles.emptyTitle}>No conversations yet</Text>
-            <Text style={styles.emptyBody}>When messaging is available, threads will appear here.</Text>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <AppPressable variant="default" style={styles.cRow} onPress={() => onOpenThread(item)}>
-            <View style={styles.emojiWrap}>
-              <Text style={styles.emoji}>💬</Text>
+      {loading ? (
+        <ActivityIndicator color={C.brand} style={{ marginTop: 28 }} />
+      ) : error ? (
+        <View style={styles.emptyInbox}>
+          <Text style={styles.emptyTitle}>Could not load messages</Text>
+          <Text style={styles.emptyBody}>{error}</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={conversations}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={[styles.listPad, { paddingBottom: bottomPadding }]}
+          ListEmptyComponent={
+            <View style={styles.emptyInbox}>
+              <Text style={styles.emptyTitle}>No conversations yet</Text>
+              <Text style={styles.emptyBody}>Open Find and tap Chat on a match to start a thread.</Text>
             </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.cName} numberOfLines={1}>
-                {item.title}
-              </Text>
-              <Text style={styles.cPrev} numberOfLines={1}>
-                {item.preview}
-              </Text>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.cTime}>{item.time}</Text>
-            </View>
-          </AppPressable>
-        )}
-        ItemSeparatorComponent={() => <View style={styles.sep} />}
-      />
+          }
+          renderItem={({ item }) => (
+            <AppPressable variant="default" style={styles.cRow} onPress={() => onOpenThread(item)}>
+              <ConversationRowAvatar
+                members={item.members}
+                isGroup={item.is_group}
+                extraCount={item.extra_member_count}
+                fallbackTitle={item.title}
+                fallbackConvId={item.id}
+              />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.cName} numberOfLines={1}>
+                  {item.title}
+                </Text>
+                <Text style={styles.cPrev} numberOfLines={1}>
+                  {item.preview}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={styles.cTime}>{item.time}</Text>
+              </View>
+            </AppPressable>
+          )}
+          ItemSeparatorComponent={() => <View style={styles.sep} />}
+        />
+      )}
     </View>
   );
 }
 
-export function ChatThread({ conversationId, threadTitle = 'Chat', onBack, bottomPadding }) {
+function mapApiRowToBubble(m) {
+  if (m.is_me) {
+    return {
+      id: String(m.id),
+      kind: 'me',
+      initials: 'You',
+      color: C.sky,
+      body: m.body,
+      time: formatMsgTime(m.created_at),
+    };
+  }
+  const name = m.sender_name || 'Member';
+  return {
+    id: String(m.id),
+    kind: 'them',
+    sender: name,
+    initials: initialsFromName(name),
+    color: C.brand,
+    body: m.body,
+    time: formatMsgTime(m.created_at),
+  };
+}
+
+/**
+ * @param {{ accessToken: string | null, conversationId: string, threadTitle?: string, onBack: () => void, bottomPadding: number, onMessagesChanged?: () => void }} props
+ */
+export function ChatThread({
+  accessToken,
+  conversationId,
+  threadTitle = 'Chat',
+  onBack,
+  bottomPadding,
+  onMessagesChanged,
+}) {
   const [rows, setRows] = useState([]);
   const [draft, setDraft] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [sendBusy, setSendBusy] = useState(false);
   const listRef = useRef(null);
 
   useEffect(() => {
-    setRows([]);
     setDraft('');
-  }, [conversationId]);
+    setRows([]);
+    if (!accessToken || !conversationId) {
+      setLoading(false);
+      return;
+    }
+    let live = true;
+    setLoading(true);
+    getChatMessages(accessToken, conversationId)
+      .then((data) => {
+        if (!live) return;
+        const msgs = data.messages ?? [];
+        setRows(msgs.map(mapApiRowToBubble));
+      })
+      .catch(() => {
+        if (live) setRows([]);
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [accessToken, conversationId]);
 
   const scrollEnd = useCallback(() => {
     requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
@@ -106,15 +341,21 @@ export function ChatThread({ conversationId, threadTitle = 'Chat', onBack, botto
 
   const send = () => {
     const t = draft.trim();
-    if (!t) return;
-    setRows((r) => [...r, { id: `u-${Date.now()}`, kind: 'me', initials: 'You', color: C.sky, body: t, time: timeNow() }]);
-    setDraft('');
+    if (!t || !accessToken || !conversationId || sendBusy) return;
+    setSendBusy(true);
+    sendChatMessage(accessToken, conversationId, t)
+      .then((msg) => {
+        setRows((r) => [...r, mapApiRowToBubble(msg)]);
+        setDraft('');
+        onMessagesChanged?.();
+      })
+      .catch(() => {})
+      .finally(() => setSendBusy(false));
   };
 
+  const title = threadTitle || 'Chat';
+
   const renderItem = ({ item }) => {
-    if (item.kind === 'sep') {
-      return <Text style={styles.dateSep}>{item.text}</Text>;
-    }
     if (item.kind === 'me') {
       return (
         <View style={[styles.msgRow, styles.msgRowMe]}>
@@ -143,8 +384,6 @@ export function ChatThread({ conversationId, threadTitle = 'Chat', onBack, botto
     );
   };
 
-  const title = threadTitle || 'Chat';
-
   return (
     <KeyboardAvoidingView
       style={styles.flex}
@@ -160,18 +399,22 @@ export function ChatThread({ conversationId, threadTitle = 'Chat', onBack, botto
         </Text>
         <View style={{ width: 56 }} />
       </View>
-      <FlatList
-        ref={listRef}
-        data={rows}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={[styles.threadList, { paddingBottom: 12 }]}
-        onContentSizeChange={scrollEnd}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <Text style={styles.threadEmpty}>No messages yet. Say hello below.</Text>
-        }
-      />
+      {loading ? (
+        <ActivityIndicator color={C.brand} style={{ marginTop: 24 }} />
+      ) : (
+        <FlatList
+          ref={listRef}
+          data={rows}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={[styles.threadList, { paddingBottom: 12 }]}
+          onContentSizeChange={scrollEnd}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <Text style={styles.threadEmpty}>No messages yet. Say hello below.</Text>
+          }
+        />
+      )}
       <View style={[styles.inputBar, { marginBottom: bottomPadding }]}>
         <TextInput
           value={draft}
@@ -182,8 +425,9 @@ export function ChatThread({ conversationId, threadTitle = 'Chat', onBack, botto
           multiline
           onSubmitEditing={send}
           blurOnSubmit={false}
+          editable={!sendBusy}
         />
-        <AppPressable variant="primary" style={styles.sendBtn} onPress={send}>
+        <AppPressable variant="primary" style={styles.sendBtn} onPress={send} disabled={sendBusy}>
           <Text style={styles.sendTxt}>➤</Text>
         </AppPressable>
       </View>
@@ -216,19 +460,45 @@ const styles = StyleSheet.create({
   emptyTitle: { color: C.text, fontSize: 16, fontWeight: '700' },
   emptyBody: { color: C.muted, fontSize: 13, marginTop: 8, textAlign: 'center', lineHeight: 20 },
   cRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 12 },
-  emojiWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  fallbackIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     backgroundColor: 'rgba(255,255,255,0.06)',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  stackWrap: {
+    width: 56,
+    height: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  stackItem: {},
+  stackRing: {
+    borderWidth: 2,
+    borderColor: C.panel,
+    borderRadius: 99,
+    overflow: 'hidden',
+  },
+  plusBadge: {
+    minWidth: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 2,
+    borderColor: C.panel,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  plusBadgeTxt: { fontSize: 11, fontWeight: '800', color: C.text },
   emoji: { fontSize: 22 },
   cName: { fontSize: 15, fontWeight: '600', color: C.text },
   cPrev: { fontSize: 12.5, color: C.muted, marginTop: 2 },
   cTime: { fontSize: 11, color: C.faint },
-  sep: { height: 1, backgroundColor: C.line, marginLeft: 72 },
+  sep: { height: 1, backgroundColor: C.line, marginLeft: 76 },
   threadHead: {
     flexDirection: 'row',
     alignItems: 'center',

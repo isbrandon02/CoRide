@@ -44,6 +44,7 @@ def _to_profile_out(user: User, db: Session) -> ProfileOut:
         office_address=profile.office_address if profile else "",
         hobbies=profile.hobbies if profile else "",
         commute_route=profile.commute_route if profile else "",
+        avatar_url=(profile.avatar_url if profile else "") or "",
         work_schedule=_work_schedule_out(profile),
         vehicle=_vehicle_out(vehicle),
         onboarding_completed=user.onboarding_completed,
@@ -71,6 +72,7 @@ def save_onboarding(
     profile.office_address = body.office_address.strip()
     profile.hobbies = body.hobbies.strip()
     profile.commute_route = body.commute_route.strip()
+    profile.avatar_url = (body.avatar_url or "").strip()
     profile.work_schedule = {
         "days": body.work_schedule.days.strip(),
         "start_time": body.work_schedule.start_time.strip(),

@@ -16,7 +16,14 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons';
 
 import AppPressable from '../components/AppPressable';
-import { createRideRequest, getImpact, getMatches, getRides, patchRideStatus } from '../src/auth';
+import {
+  createRideRequest,
+  getImpact,
+  getMatches,
+  getRides,
+  openOrGetDm,
+  patchRideStatus,
+} from '../src/auth';
 import { ChatList, ChatThread } from './ChatTab';
 import ProfileSettingsScreen from './ProfileSettingsScreen';
 import RidesTab from './RidesTab';
@@ -155,9 +162,9 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
   const [ridesRefreshKey, setRidesRefreshKey] = useState(0);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [chatSub, setChatSub] = useState('list');
-  const [chatConvId, setChatConvId] = useState('morning');
-  /** set when opening a thread from the inbox */
+  /** set when opening a thread from the inbox or Find */
   const [chatThread, setChatThread] = useState(null);
+  const [chatRefreshKey, setChatRefreshKey] = useState(0);
   /** When set, Find tab scrolls to this match and highlights it (e.g. from Home). */
   const [findFocusId, setFindFocusId] = useState(null);
   const [filters, setFilters] = useState([]);
@@ -291,6 +298,26 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
       ]);
     },
     [accessToken, pendingRideByDriverId],
+  );
+
+  const openChatFromFind = useCallback(
+    async (match) => {
+      if (!accessToken) return;
+      const otherId = Number(match.id);
+      if (!Number.isFinite(otherId)) {
+        Alert.alert('Chat', 'Invalid match.');
+        return;
+      }
+      try {
+        const dm = await openOrGetDm(accessToken, otherId);
+        setChatThread({ id: String(dm.conversation_id), title: dm.title });
+        setChatSub('thread');
+        setTab('chat');
+      } catch (e) {
+        Alert.alert('Chat', e instanceof Error ? e.message : String(e));
+      }
+    },
+    [accessToken],
   );
 
   const confirm = async () => {
@@ -493,9 +520,8 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
             pendingDriverIds={pendingDriverIds}
             cancellingDriverId={cancellingDriverId}
             onCancelPendingRide={cancelPendingRide}
+            openChatFromFind={openChatFromFind}
             setSheet={setSheet}
-            setChatConvId={setChatConvId}
-            setChatSub={setChatSub}
             setTab={setTab}
           />
         )}
@@ -513,6 +539,8 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
         )}
         {tab === 'chat' && chatSub === 'list' && (
           <ChatList
+            accessToken={accessToken}
+            refreshKey={chatRefreshKey}
             bottomPadding={tabBarHeight}
             onOpenThread={(c) => {
               setChatThread({ id: c.id, title: c.title });
@@ -522,13 +550,16 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
         )}
         {tab === 'chat' && chatSub === 'thread' && chatThread != null && (
           <ChatThread
+            accessToken={accessToken}
             conversationId={chatThread.id}
             threadTitle={chatThread.title}
             bottomPadding={tabBarHeight}
             onBack={() => {
               setChatSub('list');
               setChatThread(null);
+              setChatRefreshKey((k) => k + 1);
             }}
+            onMessagesChanged={() => setChatRefreshKey((k) => k + 1)}
           />
         )}
         {tab === 'profile' && (
@@ -1023,9 +1054,8 @@ function FindMatchesList({
   pendingDriverIds,
   cancellingDriverId,
   onCancelPendingRide,
+  openChatFromFind,
   setSheet,
-  setChatConvId,
-  setChatSub,
   setTab,
 }) {
   const listRef = useRef(null);
@@ -1194,9 +1224,7 @@ function FindMatchesList({
               variant="ghost"
               style={s.ghostBtnWide}
               onPress={() => {
-                setChatConvId('morning');
-                setChatSub('thread');
-                setTab('chat');
+                void openChatFromFind(m);
               }}
             >
               <Text style={s.ghostText}>Chat</Text>
@@ -1211,9 +1239,8 @@ function FindMatchesList({
       pendingDriverIds,
       cancellingDriverId,
       onCancelPendingRide,
+      openChatFromFind,
       setSheet,
-      setChatConvId,
-      setChatSub,
       setTab,
     ],
   );

@@ -6,8 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import Base, engine, migrate_sqlite_schema
-from app.demo_seed import seed_demo_accounts, seed_demo_rides
-from app.routers import auth, impact, matches, profile, rides
+from app.demo_seed import apply_demo_profile_photos, seed_demo_accounts, seed_demo_chats, seed_demo_rides
+from app.routers import auth, chats, impact, matches, profile, rides
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +20,15 @@ async def lifespan(_app: FastAPI):
         created, skipped = seed_demo_accounts()
         if created:
             logger.info("Startup demo seed: %s account(s) added (%s already existed)", created, skipped)
+        photo_n, _ = apply_demo_profile_photos()
+        if photo_n:
+            logger.info("Startup demo profile photos: %s profile(s) updated", photo_n)
         ride_n, _ = seed_demo_rides()
         if ride_n:
             logger.info("Startup demo ride seed: %s ride(s) added", ride_n)
+        chat_n, _ = seed_demo_chats()
+        if chat_n:
+            logger.info("Startup demo chat seed: %s message(s) added", chat_n)
     yield
 
 
@@ -41,6 +47,7 @@ app.include_router(profile.router)
 app.include_router(matches.router)
 app.include_router(rides.router)
 app.include_router(impact.router)
+app.include_router(chats.router)
 
 
 @app.get("/health")

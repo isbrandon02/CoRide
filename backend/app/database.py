@@ -126,6 +126,16 @@ def migrate_sqlite_schema() -> None:
                         "ALTER TABLE user_profiles ADD COLUMN commute_route TEXT NOT NULL DEFAULT ''"
                     )
                 )
+            if "avatar_url" not in pcols:
+                conn.execute(text("ALTER TABLE user_profiles ADD COLUMN avatar_url TEXT NOT NULL DEFAULT ''"))
+        try:
+            crows = conn.execute(text("PRAGMA table_info(chat_conversations)")).fetchall()
+        except Exception:
+            crows = []
+        if crows:
+            ccols = {r[1] for r in crows}
+            if "title" not in ccols:
+                conn.execute(text("ALTER TABLE chat_conversations ADD COLUMN title TEXT NOT NULL DEFAULT ''"))
 
 
 def get_db() -> Generator[Session, None, None]:

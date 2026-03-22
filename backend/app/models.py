@@ -37,6 +37,8 @@ class UserProfile(Base):
     office_address: Mapped[str] = mapped_column(Text, default="")
     hobbies: Mapped[str] = mapped_column(Text, default="")
     commute_route: Mapped[str] = mapped_column(Text, default="")
+    # Optional HTTPS URL or data URL for profile photo (shown in chat, etc.).
+    avatar_url: Mapped[str] = mapped_column(Text, default="")
     # e.g. {"days": "Mon–Fri", "start_time": "9:00", "end_time": "17:00"}
     work_schedule: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
@@ -69,3 +71,37 @@ class Ride(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     saved_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
     co2_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class ChatConversation(Base):
+    __tablename__ = "chat_conversations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # Custom title for group chats; empty for 1:1 (title derived from the other person).
+    title: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class ChatParticipant(Base):
+    __tablename__ = "chat_participants"
+
+    conversation_id: Mapped[int] = mapped_column(
+        ForeignKey("chat_conversations.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[int] = mapped_column(
+        ForeignKey("chat_conversations.id", ondelete="CASCADE"), index=True
+    )
+    sender_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    body: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
