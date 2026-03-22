@@ -31,7 +31,70 @@ import { colors as C, type as T } from '../src/theme';
 
 const EMPTY_IMPACT = { saved: 0, co2: 0, rides: 0, weekly: [] };
 const MATCH_COLORS = [C.brand, C.amber, C.sky];
-const FILTERS = ['Morning', 'Afternoon', 'Evening'];
+
+/** Find tab: single-select sort (applied after search). */
+const FIND_SORT_DEPART = 'depart';
+const FIND_SORT_CO2 = 'co2';
+const FIND_SORT_SHARE = 'share';
+const FIND_SORT_RIDE = 'ride';
+const FIND_SORT_OPTIONS = [
+  { id: FIND_SORT_DEPART, label: 'Depart time' },
+  { id: FIND_SORT_CO2, label: 'CO₂ saved' },
+  { id: FIND_SORT_SHARE, label: 'Your share' },
+  { id: FIND_SORT_RIDE, label: 'Shortest ride' },
+];
+
+/** Minutes since midnight for commute depart; unknown times sort last. */
+function parseDepartMinutes(raw) {
+  if (raw == null) return Number.POSITIVE_INFINITY;
+  const s = String(raw).trim();
+  if (!s) return Number.POSITIVE_INFINITY;
+  const ampm = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)\s*$/i);
+  if (ampm) {
+    let h = parseInt(ampm[1], 10);
+    const min = parseInt(ampm[2], 10);
+    const ap = ampm[3].toLowerCase();
+    if (ap === 'pm' && h !== 12) h += 12;
+    if (ap === 'am' && h === 12) h = 0;
+    if (h > 23 || min > 59) return Number.POSITIVE_INFINITY;
+    return h * 60 + min;
+  }
+  const m24 = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (m24) {
+    const h = parseInt(m24[1], 10);
+    const min = parseInt(m24[2], 10);
+    if (h > 23 || min > 59) return Number.POSITIVE_INFINITY;
+    return h * 60 + min;
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+function sortFindMatches(matches, mode) {
+  const out = [...matches];
+  switch (mode) {
+    case FIND_SORT_DEPART:
+      out.sort((a, b) => parseDepartMinutes(a.time) - parseDepartMinutes(b.time));
+      break;
+    case FIND_SORT_CO2:
+      out.sort((a, b) => (b.co2 || 0) - (a.co2 || 0));
+      break;
+    case FIND_SORT_SHARE:
+      out.sort((a, b) => (a.cost || 0) - (b.cost || 0));
+      break;
+    case FIND_SORT_RIDE: {
+      out.sort((a, b) => {
+        const ea = a.eta || 0;
+        const eb = b.eta || 0;
+        if (ea !== eb) return ea - eb;
+        return (a.detour || 0) - (b.detour || 0);
+      });
+      break;
+    }
+    default:
+      break;
+  }
+  return out;
+}
 
 const TAB_BAR_ITEMS = [
   { key: 'home', label: 'Home', iconOn: 'home', iconOff: 'home-outline' },
@@ -171,7 +234,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
   const [findFocusId, setFindFocusId] = useState(null);
   /** When set, Activity → Upcoming highlights this driver (other_user id string); from Ride requested home widget. */
   const [ridesFocusOtherUserId, setRidesFocusOtherUserId] = useState(null);
-  const [filters, setFilters] = useState([]);
+  const [findSortMode, setFindSortMode] = useState(FIND_SORT_DEPART);
   const [homeProfileMenuOpen, setHomeProfileMenuOpen] = useState(false);
   /** Increment to tell Profile tab to enter edit mode (from Home menu). */
   const [profileEditSignal, setProfileEditSignal] = useState(0);
@@ -262,12 +325,19 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
     );
   }, [matches, search]);
 
+  const sortedShown = useMemo(
+    () => sortFindMatches(shown, findSortMode),
+    [shown, findSortMode],
+  );
+
   const displayedMatches = useMemo(() => {
-    if (!findFocusId) return shown;
+    if (!findFocusId) return sortedShown;
     const focus = matches.find((m) => m.id === findFocusId);
-    if (!focus || shown.some((m) => m.id === findFocusId)) return shown;
-    return [focus, ...shown.filter((m) => m.id !== findFocusId)];
-  }, [shown, matches, findFocusId]);
+    if (!focus || sortedShown.some((m) => m.id === findFocusId)) return sortedShown;
+    return [focus, ...sortedShown.filter((m) => m.id !== findFocusId)];
+  }, [sortedShown, matches, findFocusId]);
+
+  const topSortedMatchId = sortedShown[0]?.id ?? null;
 
   useEffect(() => {
     if (tab !== 'matches' || !findFocusId) return;
@@ -310,11 +380,6 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
     setRidesFocusOtherUserId(String(otherUserId));
     setTab('rides');
   }
-
-  const toggleFilter = useCallback(
-    (f) => setFilters((cur) => (cur.includes(f) ? cur.filter((x) => x !== f) : [...cur, f])),
-    [],
-  );
 
   const cancelPendingRide = useCallback(
     (driverIdStr) => {
@@ -403,9 +468,11 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
             <Text style={s.smallMuted}>{greet}</Text>
             <Text style={s.title}>{name}</Text>
             <Text style={s.sub}>
-              {matches.length === 0
-                ? 'No route matches yet — open Find when coworkers are onboarded'
-                : '3 coworkers from Two Sigma on your route today'}
+              {loadingMatches
+                ? 'Loading route matches…'
+                : matches.length === 0
+                  ? 'No route matches yet — open Find when coworkers are onboarded'
+                  : `${matches.length} coworker${matches.length === 1 ? '' : 's'} on your route today`}
             </Text>
           </View>
           <View style={s.homeHeaderActions}>
@@ -707,13 +774,13 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
         {tab === 'matches' && (
           <FindMatchesList
             displayedMatches={displayedMatches}
-            shown={shown}
+            topSortedMatchId={topSortedMatchId}
             loadingMatches={loadingMatches}
             findFocusId={findFocusId}
             search={search}
             setSearch={setSearch}
-            filters={filters}
-            toggleFilter={toggleFilter}
+            findSortMode={findSortMode}
+            setFindSortMode={setFindSortMode}
             pendingDriverIds={pendingDriverIds}
             cancellingDriverId={cancellingDriverId}
             onCancelPendingRide={cancelPendingRide}
@@ -1157,18 +1224,6 @@ const s = StyleSheet.create({
   },
   chipOn: { backgroundColor: C.brandSoft, borderColor: C.brand },
   chipText: { color: C.muted, fontSize: 12, fontWeight: '700' },
-  tip: {
-    marginHorizontal: 16,
-    marginTop: 10,
-    marginBottom: 12,
-    backgroundColor: C.brandSoft,
-    borderWidth: 1,
-    borderColor: C.brand,
-    borderRadius: 12,
-    paddingHorizontal: 13,
-    paddingVertical: 11,
-  },
-  tipText: { color: C.text, fontSize: 12.5 },
   center: { paddingVertical: 40, alignItems: 'center' },
   loader: { paddingVertical: 24 },
   skeletonBlock: {
@@ -1392,13 +1447,13 @@ const FIND_FOCUS_SCROLL_BACK_PX = 128;
 /** Stable screen (not defined inside MainApp) so React does not remount Find on every parent render. */
 function FindMatchesList({
   displayedMatches,
-  shown,
+  topSortedMatchId,
   loadingMatches,
   findFocusId,
   search,
   setSearch,
-  filters,
-  toggleFilter,
+  findSortMode,
+  setFindSortMode,
   pendingDriverIds,
   cancellingDriverId,
   onCancelPendingRide,
@@ -1458,23 +1513,23 @@ function FindMatchesList({
             style={s.input}
           />
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
-          {FILTERS.map((f) => {
-            const on = filters.includes(f);
-            return (
-              <AppPressable
-                key={f}
-                variant="chip"
-                style={[s.chip, on && s.chipOn]}
-                onPress={() => toggleFilter(f)}
-              >
-                <Text style={[s.chipText, on && { color: C.brand }]}>{f}</Text>
-              </AppPressable>
-            );
-          })}
-        </ScrollView>
-        <View style={s.tip}>
-          <Text style={s.tipText}>Score = route overlap x 0.6 + time proximity x 0.4</Text>
+        <View style={{ marginTop: 4 }}>
+          <Text style={[s.searchLbl, { marginHorizontal: 16, marginBottom: 6 }]}>Sort</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
+            {FIND_SORT_OPTIONS.map((opt) => {
+              const on = findSortMode === opt.id;
+              return (
+                <AppPressable
+                  key={opt.id}
+                  variant="chip"
+                  style={[s.chip, on && s.chipOn]}
+                  onPress={() => setFindSortMode(opt.id)}
+                >
+                  <Text style={[s.chipText, on && { color: C.brand }]}>{opt.label}</Text>
+                </AppPressable>
+              );
+            })}
+          </ScrollView>
         </View>
         {loadingMatches ? (
           <View style={s.findSkeletonWrap}>
@@ -1485,13 +1540,13 @@ function FindMatchesList({
           </View>
         ) : displayedMatches.length === 0 ? (
           <View style={s.card}>
-            <Text style={s.rowTitle}>No matches for these filters yet</Text>
-            <Text style={s.rowSub}>Try removing a filter or search by another neighborhood.</Text>
+            <Text style={s.rowTitle}>No matches for your search</Text>
+            <Text style={s.rowSub}>Try another name, area, or sort option.</Text>
           </View>
         ) : null}
       </View>
     ),
-    [loadingMatches, displayedMatches.length, search, filters, toggleFilter, setSearch],
+    [loadingMatches, displayedMatches.length, search, findSortMode, setFindSortMode, setSearch],
   );
 
   const renderItem = useCallback(
@@ -1499,7 +1554,7 @@ function FindMatchesList({
       const done = pendingDriverIds.includes(m.id);
       const cancelBusy = cancellingDriverId === m.id;
       const focused = findFocusId === m.id;
-      const isTopMatch = m.id === shown[0]?.id;
+      const isTopMatch = m.id === topSortedMatchId;
       return (
         <View style={[s.match, isTopMatch && !focused && { borderColor: C.brand }, focused && s.matchFocused]}>
           <View style={s.between}>
@@ -1583,7 +1638,7 @@ function FindMatchesList({
     },
     [
       findFocusId,
-      shown,
+      topSortedMatchId,
       pendingDriverIds,
       cancellingDriverId,
       onCancelPendingRide,
@@ -1599,7 +1654,7 @@ function FindMatchesList({
       style={{ flex: 1 }}
       data={listData}
       keyExtractor={(item) => item.id}
-      extraData={`${findFocusId}-${pendingDriverIds.join(',')}-${cancellingDriverId ?? ''}`}
+      extraData={`${findSortMode}-${findFocusId}-${pendingDriverIds.join(',')}-${cancellingDriverId ?? ''}`}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
       ListHeaderComponent={listHeader}
