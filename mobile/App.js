@@ -38,8 +38,15 @@ export default function App() {
         if (!cancelled) {
           setNeedsOnboarding(shouldShowOnboarding(profile));
         }
-      } catch {
+      } catch (e) {
         if (!cancelled) {
+          const status = e && typeof e === 'object' && 'status' in e ? e.status : undefined;
+          if (status === 401 || status === 403) {
+            await clearStoredToken();
+            setToken(null);
+            setNeedsOnboarding(null);
+            return;
+          }
           setNeedsOnboarding(true);
         }
       }
@@ -108,7 +115,11 @@ export default function App() {
       <ActivityIndicator size="large" color="#0D9488" />
     </View>
   ) : token && needsOnboarding ? (
-    <OnboardingScreen accessToken={token} onComplete={handleOnboardingComplete} />
+    <OnboardingScreen
+      accessToken={token}
+      onComplete={handleOnboardingComplete}
+      onSignOut={handleLogout}
+    />
   ) : token ? (
     <MainApp
       accessToken={token}

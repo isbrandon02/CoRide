@@ -143,7 +143,9 @@ export async function getProfile(accessToken) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(parseErrorDetail(data, 'Could not load profile'));
+    const err = new Error(parseErrorDetail(data, 'Could not load profile'));
+    err.status = res.status;
+    throw err;
   }
   return data;
 }
