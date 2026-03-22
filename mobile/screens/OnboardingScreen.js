@@ -15,9 +15,9 @@ import AppPressable from '../components/AppPressable';
 import { hasGoogleMapsKey, normalizeAddressWithGoogle } from '../src/googleMaps';
 import { saveOnboarding } from '../src/auth';
 
-const accent = '#0D9488';
+const accent = '#00c896';
 
-export default function OnboardingScreen({ accessToken, onComplete }) {
+export default function OnboardingScreen({ accessToken, onComplete, onSignOut }) {
   const [homeAddress, setHomeAddress] = useState('');
   const [officeAddress, setOfficeAddress] = useState('');
   const [commuteRoute, setCommuteRoute] = useState('');
@@ -223,6 +223,17 @@ export default function OnboardingScreen({ accessToken, onComplete }) {
               <Text style={styles.buttonLabel}>Save and continue</Text>
             )}
           </AppPressable>
+
+          {typeof onSignOut === 'function' ? (
+            <AppPressable
+              variant="ghost"
+              style={styles.signOut}
+              onPress={onSignOut}
+              disabled={loading}
+            >
+              <Text style={styles.signOutLabel}>Sign out</Text>
+            </AppPressable>
+          ) : null}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -230,7 +241,8 @@ export default function OnboardingScreen({ accessToken, onComplete }) {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
+  /* Light sheet so copy stays readable when App auth shell uses dark (signed-out) background */
+  flex: { flex: 1, backgroundColor: '#F1F5F9' },
   scroll: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 40 },
   header: { marginBottom: 20 },
   logo: {
@@ -291,4 +303,10 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.7 },
   buttonLabel: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  signOut: {
+    marginTop: 16,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  signOutLabel: { fontSize: 15, fontWeight: '600', color: '#64748B' },
 });
