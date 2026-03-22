@@ -608,7 +608,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
           </View>
           <View style={s.stat}>
             <Text style={[s.statNum, { color: C.sky }]}>{impact.co2}kg</Text>
-            <Text style={s.statKey}>CO2 less</Text>
+            <Text style={s.statKey}>CO2 Saved</Text>
           </View>
           <View style={s.stat}>
             <Text style={s.statNum}>{impact.rides}</Text>

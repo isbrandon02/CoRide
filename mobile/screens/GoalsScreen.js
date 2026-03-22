@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AppPressable from '../components/AppPressable';
 import { getImpact, getLeaderboard } from '../src/auth';
@@ -26,6 +25,9 @@ const METRICS = [
   { key: 'total_saved', label: 'Money Saved' },
 ];
 const DEFAULT_WEEKLY_CO2_GOAL_KG = 6;
+const CO2_KG_PER_CAR_MILE = 0.404;
+const CO2_KG_PER_LAPTOP_DAY = 0.16;
+const CO2_KG_PER_GALLON_GAS = 8.89;
 
 function initialsFromName(name, email) {
   const raw = String(name || email || '?').trim();
@@ -49,6 +51,12 @@ function metricCaption(metric) {
   if (metric === 'total_co2_kg') return 'CO2 saved';
   if (metric === 'total_saved') return 'Money saved';
   return '';
+}
+
+function formatEquivalencyNumber(value) {
+  if (value >= 10) return `${Math.round(value)}`;
+  if (value >= 1) return `${value.toFixed(1)}`;
+  return `${value.toFixed(2)}`;
 }
 
 export default function GoalsScreen({ accessToken, bottomPadding = 0 }) {
@@ -129,6 +137,14 @@ export default function GoalsScreen({ accessToken, bottomPadding = 0 }) {
   const rawProgress = Math.max(0, weeklyCo2Saved / weeklyGoalKg);
   const progress = Math.min(rawProgress, 1);
   const co2Remaining = Math.max(weeklyGoalKg - weeklyCo2Saved, 0);
+  const equivalencies = useMemo(
+    () => [
+      `avoiding ${formatEquivalencyNumber(weeklyCo2Saved / CO2_KG_PER_CAR_MILE)} car miles`,
+      `powering a laptop for ${formatEquivalencyNumber(weeklyCo2Saved / CO2_KG_PER_LAPTOP_DAY)} days`,
+      `not burning ${formatEquivalencyNumber(weeklyCo2Saved / CO2_KG_PER_GALLON_GAS)} gallons of gas`,
+    ],
+    [weeklyCo2Saved]
+  );
 
   const sortedLeaderboard = useMemo(() => {
     const list = [...leaderboard];
@@ -142,17 +158,14 @@ export default function GoalsScreen({ accessToken, bottomPadding = 0 }) {
   }, [leaderboard, metric]);
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <View style={styles.root}>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(bottomPadding, 20) + 20 }]}
-        >
-          <Text style={styles.eyebrow}>Sustainability goals</Text>
-          <Text style={styles.title}>Work leaderboard</Text>
-          <Text style={styles.sub}>
-            Compare how coworkers are stacking up on shared commuting impact.
-          </Text>
+    <View style={styles.root}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(bottomPadding, 20) + 20 }]}
+      >
+          <View style={styles.head}>
+            <Text style={styles.title}>Goals</Text>
+          </View>
 
           <View style={styles.progressCard}>
             <View style={styles.progressHeader}>
@@ -188,6 +201,14 @@ export default function GoalsScreen({ accessToken, bottomPadding = 0 }) {
             <Text style={styles.progressMeta}>
               {weeklyRides} shared ride{weeklyRides === 1 ? '' : 's'} contributing so far
             </Text>
+            <View style={styles.equivalencyBlock}>
+              <Text style={styles.equivalencyTitle}>Equal to:</Text>
+              {equivalencies.map((item) => (
+                <Text key={item} style={styles.equivalencyItem}>
+                  - {item}
+                </Text>
+              ))}
+            </View>
           </View>
 
           <View style={styles.leaderboardCard}>
@@ -259,102 +280,98 @@ export default function GoalsScreen({ accessToken, bottomPadding = 0 }) {
               </ScrollView>
             )}
           </View>
-        </ScrollView>
+      </ScrollView>
 
-        <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
-          <View style={styles.modalRoot}>
-            <AppPressable variant="none" style={styles.modalBackdrop} onPress={() => setPickerOpen(false)} />
-            <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>Leaderboard metric</Text>
-              {METRICS.map((item) => {
-                const active = item.key === metric;
-                return (
-                  <AppPressable
-                    key={item.key}
-                    variant="ghost"
-                    style={[styles.modalOption, active && styles.modalOptionActive]}
-                    onPress={() => {
-                      setMetric(item.key);
-                      setPickerOpen(false);
-                    }}
-                  >
-                    <Text style={[styles.modalOptionText, active && styles.modalOptionTextActive]}>
-                      {item.label}
-                    </Text>
-                    {active ? <Ionicons name="checkmark" size={18} color={C.brand} /> : null}
-                  </AppPressable>
-                );
-              })}
-            </View>
-          </View>
-        </Modal>
-
-        <Modal
-          visible={goalEditorOpen}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setGoalEditorOpen(false)}
-        >
-          <View style={styles.modalRoot}>
-            <AppPressable variant="none" style={styles.modalBackdrop} onPress={() => setGoalEditorOpen(false)} />
-            <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>Weekly CO2 Goal</Text>
-              <Text style={styles.modalBody}>
-                Enter the number of kilograms of CO2 you want to save each week.
-              </Text>
-              <TextInput
-                value={goalDraft}
-                onChangeText={(text) => setGoalDraft(text.replace(/[^0-9.]/g, ''))}
-                keyboardType="decimal-pad"
-                placeholder="6"
-                placeholderTextColor={C.faint}
-                style={styles.goalInput}
-              />
-              <View style={styles.modalActions}>
+      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
+        <View style={styles.modalRoot}>
+          <AppPressable variant="none" style={styles.modalBackdrop} onPress={() => setPickerOpen(false)} />
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Leaderboard metric</Text>
+            {METRICS.map((item) => {
+              const active = item.key === metric;
+              return (
                 <AppPressable
+                  key={item.key}
                   variant="ghost"
-                  style={styles.modalButton}
-                  onPress={() => setGoalEditorOpen(false)}
-                >
-                  <Text style={styles.modalButtonText}>Cancel</Text>
-                </AppPressable>
-                <AppPressable
-                  variant="ghost"
-                  style={[styles.modalButton, styles.modalButtonPrimary]}
+                  style={[styles.modalOption, active && styles.modalOptionActive]}
                   onPress={() => {
-                    const nextGoal = Number.parseFloat(goalDraft);
-                    if (Number.isFinite(nextGoal) && nextGoal > 0) {
-                      setWeeklyGoalKg(nextGoal);
-                    }
-                    setGoalEditorOpen(false);
+                    setMetric(item.key);
+                    setPickerOpen(false);
                   }}
                 >
-                  <Text style={[styles.modalButtonText, styles.modalButtonPrimaryText]}>Save</Text>
+                  <Text style={[styles.modalOptionText, active && styles.modalOptionTextActive]}>
+                    {item.label}
+                  </Text>
+                  {active ? <Ionicons name="checkmark" size={18} color={C.brand} /> : null}
                 </AppPressable>
-              </View>
+              );
+            })}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={goalEditorOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setGoalEditorOpen(false)}
+      >
+        <View style={styles.modalRoot}>
+          <AppPressable variant="none" style={styles.modalBackdrop} onPress={() => setGoalEditorOpen(false)} />
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Weekly CO2 Goal</Text>
+            <Text style={styles.modalBody}>
+              Enter the number of kilograms of CO2 you want to save each week.
+            </Text>
+            <TextInput
+              value={goalDraft}
+              onChangeText={(text) => setGoalDraft(text.replace(/[^0-9.]/g, ''))}
+              keyboardType="decimal-pad"
+              placeholder="6"
+              placeholderTextColor={C.faint}
+              style={styles.goalInput}
+            />
+            <View style={styles.modalActions}>
+              <AppPressable
+                variant="ghost"
+                style={styles.modalButton}
+                onPress={() => setGoalEditorOpen(false)}
+              >
+                <Text style={styles.modalButtonText}>Cancel</Text>
+              </AppPressable>
+              <AppPressable
+                variant="ghost"
+                style={[styles.modalButton, styles.modalButtonPrimary]}
+                onPress={() => {
+                  const nextGoal = Number.parseFloat(goalDraft);
+                  if (Number.isFinite(nextGoal) && nextGoal > 0) {
+                    setWeeklyGoalKg(nextGoal);
+                  }
+                  setGoalEditorOpen(false);
+                }}
+              >
+                <Text style={[styles.modalButtonText, styles.modalButtonPrimaryText]}>Save</Text>
+              </AppPressable>
             </View>
           </View>
-        </Modal>
-      </View>
-    </SafeAreaView>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
   root: { flex: 1, backgroundColor: C.bg },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 12 },
-  eyebrow: {
-    color: C.brand,
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+  scrollContent: { paddingBottom: 20 },
+  head: {
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 8,
   },
-  title: { color: C.text, fontSize: 30, fontWeight: '800', marginTop: 8 },
-  sub: { color: C.muted, fontSize: 14, lineHeight: 21, marginTop: 8 },
+  title: { color: C.text, fontSize: 28, fontWeight: '800' },
   progressCard: {
-    marginTop: 18,
+    marginTop: 14,
+    marginHorizontal: 16,
     backgroundColor: C.card,
     borderWidth: 1,
     borderColor: C.line,
@@ -430,8 +447,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 6,
   },
+  equivalencyBlock: {
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: C.line,
+    gap: 6,
+  },
+  equivalencyTitle: {
+    color: C.text,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  equivalencyItem: {
+    color: C.muted,
+    fontSize: 13,
+    lineHeight: 20,
+  },
   leaderboardCard: {
     marginTop: 18,
+    marginHorizontal: 16,
     backgroundColor: C.card,
     borderWidth: 1,
     borderColor: C.line,
