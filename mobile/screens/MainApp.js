@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import AppPressable from '../components/AppPressable';
 import { createRideRequest, getImpact, getMatches, getRides } from '../src/auth';
-import { ChatList, ChatThread } from './ChatTab';
+import { ChatList, ChatThread, COMPANY_MEMBERS, INITIAL_CONVERSATIONS } from './ChatTab';
 import ProfileSettingsScreen from './ProfileSettingsScreen';
 import RidesTab from './RidesTab';
 
@@ -152,9 +152,9 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
   const [ridesRefreshKey, setRidesRefreshKey] = useState(0);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [chatSub, setChatSub] = useState('list');
-  const [chatConvId, setChatConvId] = useState('morning');
   /** set when opening a thread from the inbox */
   const [chatThread, setChatThread] = useState(null);
+  const [chatConversations, setChatConversations] = useState(INITIAL_CONVERSATIONS);
   /** When set, Find tab scrolls to this match and highlights it (e.g. from Home). */
   const [findFocusId, setFindFocusId] = useState(null);
   const [filters, setFilters] = useState([]);
@@ -452,7 +452,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
             toggleFilter={toggleFilter}
             pendingDriverIds={pendingDriverIds}
             setSheet={setSheet}
-            setChatConvId={setChatConvId}
+            setChatThread={setChatThread}
             setChatSub={setChatSub}
             setTab={setTab}
           />
@@ -472,6 +472,37 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
         {tab === 'chat' && chatSub === 'list' && (
           <ChatList
             bottomPadding={tabBarHeight}
+            conversations={chatConversations}
+            employees={COMPANY_MEMBERS}
+            onCreateGroup={(memberIds) => {
+              const members = COMPANY_MEMBERS.filter((member) => memberIds.includes(member.id));
+              const title = `${members.slice(0, 3).map((member) => member.name.split(' ')[0]).join(', ')} Group`;
+              const created = {
+                id: `group-${Date.now()}`,
+                title,
+                preview: `Group created with ${members.length} coworkers`,
+                time: 'Now',
+                initials: 'GC',
+                color: C.sky,
+                isGroup: true,
+                members: memberIds,
+                messages: [
+                  {
+                    id: `group-msg-${Date.now()}`,
+                    kind: 'other',
+                    sender: 'CoRide',
+                    initials: 'CR',
+                    color: C.brand,
+                    body: `Group chat started with ${members.map((member) => member.name).join(', ')}.`,
+                    time: 'Now',
+                  },
+                ],
+              };
+              setChatConversations((current) => [created, ...current]);
+              setChatThread({ id: created.id, title: created.title });
+              setChatSub('thread');
+              return created;
+            }}
             onOpenThread={(c) => {
               setChatThread({ id: c.id, title: c.title });
               setChatSub('thread');
@@ -480,9 +511,38 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
         )}
         {tab === 'chat' && chatSub === 'thread' && chatThread != null && (
           <ChatThread
-            conversationId={chatThread.id}
+            conversation={chatConversations.find((item) => item.id === chatThread.id) ?? null}
             threadTitle={chatThread.title}
             bottomPadding={tabBarHeight}
+            onRenameGroup={(conversationId, nextTitle) => {
+              setChatConversations((current) =>
+                current.map((item) =>
+                  item.id === conversationId
+                    ? {
+                        ...item,
+                        title: nextTitle,
+                      }
+                    : item,
+                ),
+              );
+              setChatThread((current) =>
+                current && current.id === conversationId ? { ...current, title: nextTitle } : current,
+              );
+            }}
+            onSendMessage={(conversationId, message) => {
+              setChatConversations((current) =>
+                current.map((item) =>
+                  item.id === conversationId
+                    ? {
+                        ...item,
+                        preview: message.body,
+                        time: message.time,
+                        messages: [...(item.messages ?? []), message],
+                      }
+                    : item,
+                ),
+              );
+            }}
             onBack={() => {
               setChatSub('list');
               setChatThread(null);
@@ -967,7 +1027,7 @@ function FindMatchesList({
   toggleFilter,
   pendingDriverIds,
   setSheet,
-  setChatConvId,
+  setChatThread,
   setChatSub,
   setTab,
 }) {
@@ -1129,7 +1189,7 @@ function FindMatchesList({
               variant="ghost"
               style={s.ghostBtnWide}
               onPress={() => {
-                setChatConvId('morning');
+                setChatThread({ id: 'conv-morning', title: 'Morning Carpool Crew' });
                 setChatSub('thread');
                 setTab('chat');
               }}
@@ -1140,7 +1200,7 @@ function FindMatchesList({
         </View>
       );
     },
-    [findFocusId, shown, pendingDriverIds, setSheet, setChatConvId, setChatSub, setTab],
+    [findFocusId, shown, pendingDriverIds, setSheet, setChatThread, setChatSub, setTab],
   );
 
   return (
