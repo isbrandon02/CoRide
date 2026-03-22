@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AppPressable from '../components/AppPressable';
 import {
   createRideRequest,
+  getProfile,
   getImpact,
   getMatches,
   getRides,
@@ -148,6 +149,12 @@ function userInitials(displayName, email) {
   return raw.slice(0, 2).toUpperCase();
 }
 
+function profileNameOverride(profile) {
+  const raw = profile?.name ?? profile?.full_name ?? profile?.display_name ?? '';
+  const trimmed = String(raw || '').trim();
+  return trimmed || null;
+}
+
 function firstLineAddress(addr) {
   if (!addr || typeof addr !== 'string') return '';
   const line = addr.split(',')[0].trim();
@@ -215,6 +222,7 @@ function normalizeMatch(x, i) {
 function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState('home');
+  const [profileName, setProfileName] = useState(null);
   const [matches, setMatches] = useState([]);
   const [impact, setImpact] = useState(EMPTY_IMPACT);
   const [loadingMatches, setLoadingMatches] = useState(true);
@@ -247,19 +255,22 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
     let live = true;
     if (!accessToken) {
       setLoadingMatches(false);
+      setProfileName(null);
       return () => {
         live = false;
       };
     }
     (async () => {
       try {
-        const [matchData, ridesData] = await Promise.all([
+        const [matchData, ridesData, profileData] = await Promise.all([
           getMatches(accessToken),
           getRides(accessToken).catch(() => ({ rides: [] })),
+          getProfile(accessToken).catch(() => null),
         ]);
         if (!live) return;
         const list = matchData.matches ?? [];
         setMatches(Array.isArray(list) ? list.map(normalizeMatch) : []);
+        setProfileName(profileNameOverride(profileData));
         const ridesList = ridesData.rides ?? [];
         setHomeRides(Array.isArray(ridesList) ? ridesList : []);
         const pendingRides = ridesList.filter(
@@ -272,6 +283,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
       } catch {
         setMatches([]);
         setHomeRides([]);
+        setProfileName(null);
       } finally {
         if (live) setLoadingMatches(false);
       }
@@ -459,7 +471,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
     }
   };
 
-  const name = displayName || 'there';
+  const name = profileName || displayName || 'there';
   const greet = greetingLine();
 
   const Home = () => (
@@ -498,7 +510,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
               onPress={() => setHomeProfileMenuOpen(true)}
               accessibilityLabel="Account menu"
             >
-              <Avatar initials={userInitials(displayName, accountEmail)} color={C.brand} size={44} />
+              <Avatar initials={userInitials(profileName || displayName, accountEmail)} color={C.brand} size={44} />
             </AppPressable>
           </View>
         </View>
@@ -855,7 +867,10 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
               accessToken={accessToken}
               accountEmail={accountEmail}
               onLogout={onLogout}
-              onSaveSuccess={() => setTab('home')}
+              onSaveSuccess={(nextProfileName) => {
+                setProfileName(nextProfileName || null);
+                setTab('home');
+              }}
               scrollBottomPadding={Math.max(insets.bottom, 16) + 24}
               editSignal={profileEditSignal}
               embeddedProfileChrome={false}

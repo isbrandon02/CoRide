@@ -34,6 +34,8 @@ const DAY_OPTIONS = ['Sat', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sun'];
 const GENDER_OPTIONS = ['Male', 'Female', 'Other', 'Prefer not to Identify'];
 const STATUS_OPTIONS = ['Rider', 'Driver', 'Flexible commuter'];
 const TIME_OPTIONS = Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, '0')}:00`);
+const PROFILE_NAME_MIN_LENGTH = 1;
+const PROFILE_NAME_MAX_LENGTH = 16;
 
 function parseWorkDays(value) {
   return String(value ?? '')
@@ -66,6 +68,11 @@ function displayNameFromProfile(profile, email) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+}
+
+function profileNameOverride(profile) {
+  const rawName = profile?.name ?? profile?.full_name ?? profile?.display_name ?? '';
+  return String(rawName || '').trim() || null;
 }
 
 function displayAgeFromProfile(profile) {
@@ -247,6 +254,14 @@ export default function ProfileSettingsScreen({
 
   async function handleSave() {
     setError('');
+    const trimmedProfileName = profileName.trim();
+    if (
+      trimmedProfileName.length < PROFILE_NAME_MIN_LENGTH ||
+      trimmedProfileName.length > PROFILE_NAME_MAX_LENGTH
+    ) {
+      setError(`Name must be between ${PROFILE_NAME_MIN_LENGTH} and ${PROFILE_NAME_MAX_LENGTH} characters.`);
+      return;
+    }
     if (!homeAddress.trim() || !officeAddress.trim()) {
       setError('Add your home and office locations.');
       return;
@@ -284,7 +299,7 @@ export default function ProfileSettingsScreen({
       setHomeAddress(normalizedHome.formattedAddress);
       setOfficeAddress(normalizedOffice.formattedAddress);
       setEditMode(false);
-      onSaveSuccess?.();
+      onSaveSuccess?.(profileNameOverride(data) ?? payload.name ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong');
     } finally {
@@ -407,6 +422,7 @@ export default function ProfileSettingsScreen({
                   placeholder="Your name"
                   placeholderTextColor={muted}
                   editable={!saving}
+                  maxLength={PROFILE_NAME_MAX_LENGTH}
                 />
               </EditablePill>
             ) : (
