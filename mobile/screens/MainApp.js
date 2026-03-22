@@ -5,6 +5,7 @@ import {
   Alert,
   FlatList,
   Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -43,7 +44,6 @@ const TAB_BAR_ITEMS = [
   { key: 'matches', label: 'Find', iconOn: 'search', iconOff: 'search-outline' },
   { key: 'rides', label: 'Activity', iconOn: 'calendar', iconOff: 'calendar-outline' },
   { key: 'chat', label: 'Chat', iconOn: 'chatbubbles', iconOff: 'chatbubbles-outline' },
-  { key: 'profile', label: 'Profile', iconOn: 'person', iconOff: 'person-outline' },
 ];
 
 const badgeTone = {
@@ -75,6 +75,18 @@ function greetingLine() {
   if (h < 12) return 'Good Morning';
   if (h < 17) return 'Good Afternoon';
   return 'Good Evening';
+}
+
+function userInitials(displayName, email) {
+  const raw = String(displayName || email || '?').trim();
+  if (!raw) return '?';
+  if (raw.includes('@')) {
+    const local = raw.split('@')[0];
+    return (local.slice(0, 2) || '?').toUpperCase();
+  }
+  const parts = raw.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return raw.slice(0, 2).toUpperCase();
 }
 
 function firstLineAddress(addr) {
@@ -146,6 +158,9 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
   /** When set, Find tab scrolls to this match and highlights it (e.g. from Home). */
   const [findFocusId, setFindFocusId] = useState(null);
   const [filters, setFilters] = useState([]);
+  const [homeProfileMenuOpen, setHomeProfileMenuOpen] = useState(false);
+  /** Increment to tell Profile tab to enter edit mode (from Home menu). */
+  const [profileEditSignal, setProfileEditSignal] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -266,16 +281,27 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
   const greet = greetingLine();
 
   const Home = () => (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.pad}>
-      <View style={s.hero}>
-        <Text style={s.smallMuted}>{greet}</Text>
-        <Text style={s.title}>{name}</Text>
-        <Text style={s.sub}>
-          {matches.length === 0
-            ? 'No route matches yet — open Find when coworkers are onboarded'
-            : `${Math.min(matches.length, 3)} coworker${matches.length === 1 ? '' : 's'} on your route`}
-        </Text>
-      </View>
+    <>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.pad}>
+        <View style={s.homeHeaderRow}>
+          <View style={s.homeHeaderText}>
+            <Text style={s.smallMuted}>{greet}</Text>
+            <Text style={s.title}>{name}</Text>
+            <Text style={s.sub}>
+              {matches.length === 0
+                ? 'No route matches yet — open Find when coworkers are onboarded'
+                : `${Math.min(matches.length, 3)} coworker${matches.length === 1 ? '' : 's'} on your route`}
+            </Text>
+          </View>
+          <AppPressable
+            variant="ghost"
+            style={s.homeAvatarBtn}
+            onPress={() => setHomeProfileMenuOpen(true)}
+            accessibilityLabel="Account menu"
+          >
+            <Avatar initials={userInitials(displayName, accountEmail)} color={C.brand} size={44} />
+          </AppPressable>
+        </View>
       <AppPressable
         variant="solid"
         style={s.alert}
@@ -366,7 +392,44 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
           <Text style={s.ghostText}>Open Find</Text>
         </AppPressable>
       </View>
-    </ScrollView>
+      </ScrollView>
+      <Modal
+        visible={homeProfileMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setHomeProfileMenuOpen(false)}
+      >
+        <View style={s.profileMenuRoot}>
+          <Pressable style={s.profileMenuBackdrop} onPress={() => setHomeProfileMenuOpen(false)} />
+          <View style={[s.profileMenuSheet, { top: insets.top + 8, right: 16 }]}>
+          <AppPressable
+            variant="default"
+            style={s.profileMenuRow}
+            onPress={() => {
+              setHomeProfileMenuOpen(false);
+              setTab('profile');
+              setProfileEditSignal((n) => n + 1);
+            }}
+          >
+            <Ionicons name="person-outline" size={20} color={C.text} />
+            <Text style={s.profileMenuText}>Edit profile</Text>
+          </AppPressable>
+          <View style={s.profileMenuDivider} />
+          <AppPressable
+            variant="default"
+            style={s.profileMenuRow}
+            onPress={() => {
+              setHomeProfileMenuOpen(false);
+              onLogout();
+            }}
+          >
+            <Ionicons name="log-out-outline" size={20} color="#f87171" />
+            <Text style={[s.profileMenuText, { color: '#f87171' }]}>Sign out</Text>
+          </AppPressable>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 
   const tabBarBottomPad = Math.max(insets.bottom, 8);
@@ -428,14 +491,29 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
         )}
         {tab === 'profile' && (
           <View style={s.profileWrap}>
+            <View style={[s.profileStackHeader, { paddingTop: Math.max(insets.top, 12) }]}>
+              <AppPressable
+                variant="ghost"
+                style={s.profileBackRow}
+                onPress={() => setTab('home')}
+                accessibilityRole="button"
+                accessibilityLabel="Back to Home"
+              >
+                <Ionicons name="chevron-back" size={24} color={C.text} />
+                <Text style={s.profileBackText}>Home</Text>
+              </AppPressable>
+            </View>
             <ProfileSettingsScreen
               accessToken={accessToken}
               accountEmail={accountEmail}
               onLogout={onLogout}
-              scrollBottomPadding={tabBarHeight}
+              scrollBottomPadding={Math.max(insets.bottom, 16) + 24}
+              editSignal={profileEditSignal}
+              embeddedProfileChrome={false}
             />
           </View>
         )}
+        {tab !== 'profile' && (
         <View style={[s.tabs, { paddingBottom: tabBarBottomPad }]}>
           {TAB_BAR_ITEMS.map(({ key: k, label: l, iconOn, iconOff }) => {
             const on = tab === k;
@@ -466,6 +544,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
             );
           })}
         </View>
+        )}
       </View>
       <Modal visible={!!sheet} transparent animationType="slide" onRequestClose={() => setSheet(null)}>
         <View style={s.backdrop}>
@@ -521,9 +600,64 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   root: { flex: 1, backgroundColor: C.panel },
-  profileWrap: { flex: 1 },
+  profileWrap: { flex: 1, backgroundColor: C.panel },
+  profileStackHeader: {
+    borderBottomWidth: 1,
+    borderBottomColor: C.line,
+    paddingHorizontal: 8,
+    paddingBottom: 4,
+    backgroundColor: C.panel,
+  },
+  profileBackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    alignSelf: 'flex-start',
+    borderRadius: 12,
+  },
+  profileBackText: { color: C.text, fontSize: 17, fontWeight: '600' },
   pad: { paddingBottom: 112 },
-  hero: { padding: 20, backgroundColor: C.card },
+  homeHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    padding: 20,
+    paddingBottom: 16,
+    backgroundColor: C.card,
+  },
+  homeHeaderText: { flex: 1, minWidth: 0 },
+  homeAvatarBtn: { borderRadius: 999, overflow: 'hidden' },
+  profileMenuRoot: { flex: 1 },
+  profileMenuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  profileMenuSheet: {
+    position: 'absolute',
+    backgroundColor: C.panel,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.line,
+    minWidth: 208,
+    overflow: 'hidden',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+  },
+  profileMenuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  profileMenuText: { color: C.text, fontSize: 16, fontWeight: '600' },
+  profileMenuDivider: { height: StyleSheet.hairlineWidth, backgroundColor: C.line },
   /** Greeting + name: same size/weight as former "Good Evening" line */
   heroHeadline: {
     color: C.text,

@@ -11,7 +11,6 @@ import { Ionicons } from '@expo/vector-icons';
 
 import AppPressable from '../components/AppPressable';
 import { getImpact, getMatches } from '../src/auth';
-import ProfileSettingsScreen from './ProfileSettingsScreen';
 
 const bg = '#0B0B0C';
 const surface = '#1C1C1E';
@@ -31,7 +30,6 @@ const TAB_DEF = [
   { key: 'rides', label: 'Activity', icon: 'calendar-outline' },
   { key: 'chat', label: 'Chat', icon: 'chatbubble-outline' },
   { key: 'impact', label: 'Impact', icon: 'wallet-outline' },
-  { key: 'profile', label: 'Profile', icon: 'person-outline' },
 ];
 
 const AVATAR_PALETTE = [tealDark, orange, purple, blue, green];
@@ -144,20 +142,6 @@ export default function HomeScreen({
   const topThree = matches.slice(0, 3);
   const findBadge = matches.length > 0 ? String(Math.min(matches.length, 9)) : null;
   const statusCount = matches.length;
-
-  if (tab === 'profile') {
-    return (
-      <View style={styles.root}>
-        <ProfileSettingsScreen
-          accessToken={accessToken}
-          accountEmail={accountEmail}
-          onLogout={onLogout}
-          scrollBottomPadding={100 + insets.bottom}
-        />
-        <BottomBar tab={tab} onChange={setTab} bottomInset={insets.bottom} findBadge={findBadge} />
-      </View>
-    );
-  }
 
   if (tab === 'find') {
     return (

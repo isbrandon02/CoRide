@@ -108,6 +108,13 @@ export default function ProfileSettingsScreen({
   accountEmail,
   onLogout,
   scrollBottomPadding = 100,
+  /** Increment from parent (e.g. Home menu) to open the screen in edit mode. */
+  editSignal = 0,
+  /**
+   * When true (e.g. legacy HomeScreen shell), show Edit / Sign out on the profile screen.
+   * MainApp uses the Home avatar menu instead (`false`).
+   */
+  embeddedProfileChrome = false,
 }) {
   const scrollRef = useRef(null);
   const [retryCount, setRetryCount] = useState(0);
@@ -133,6 +140,7 @@ export default function ProfileSettingsScreen({
   const [editMode, setEditMode] = useState(false);
   const [savedProfile, setSavedProfile] = useState(null);
   const [openTimePicker, setOpenTimePicker] = useState(null);
+  const lastEditSignalRef = useRef(0);
   const [openGenderPicker, setOpenGenderPicker] = useState(false);
   const [openStatusPicker, setOpenStatusPicker] = useState(false);
 
@@ -248,6 +256,12 @@ export default function ProfileSettingsScreen({
     setEditMode(true);
   }
 
+  useEffect(() => {
+    if (!editSignal || editSignal <= lastEditSignalRef.current) return;
+    lastEditSignalRef.current = editSignal;
+    handleStartEdit({ scrollToTop: true });
+  }, [editSignal]);
+
   function toggleWorkDay(day) {
     const selectedDays = parseWorkDays(workDays);
     const nextDays = selectedDays.includes(day)
@@ -293,15 +307,14 @@ export default function ProfileSettingsScreen({
     return (
       <View style={styles.centered}>
         <Text style={styles.loadErrorText}>{loadError}</Text>
-        <AppPressable
-          style={({ pressed }) => [styles.retryBtn, pressed && styles.pressed]}
-          onPress={() => setRetryCount((count) => count + 1)}
-        >
+        <AppPressable variant="ghost" style={styles.retryBtn} onPress={() => setRetryCount((count) => count + 1)}>
           <Text style={styles.signOutLabel}>Try again</Text>
         </AppPressable>
-        <AppPressable variant="link" style={styles.signOutBtnBare} onPress={onLogout}>
-          <Text style={styles.signOutOnlyLabel}>Sign out</Text>
-        </AppPressable>
+        {embeddedProfileChrome ? (
+          <AppPressable variant="link" style={styles.signOutBtnBare} onPress={onLogout}>
+            <Text style={styles.signOutOnlyLabel}>Sign out</Text>
+          </AppPressable>
+        ) : null}
       </View>
     );
   }
@@ -546,37 +559,41 @@ export default function ProfileSettingsScreen({
                 {saving ? <ActivityIndicator color="#0F172A" /> : <Text style={styles.saveBtnLabel}>Save changes</Text>}
               </Pressable>
             </View>
-          ) : (
+          ) : embeddedProfileChrome ? (
             <Pressable
               style={({ pressed }) => [styles.saveBtn, pressed && styles.pressed]}
               onPress={() => handleStartEdit({ scrollToTop: true })}
             >
               <Text style={styles.saveBtnLabel}>Edit profile</Text>
             </Pressable>
-          )}
+          ) : null}
 
-          <AppPressable variant="link" style={styles.signOutBtn} onPress={onLogout}>
-            <Text style={styles.signOutOnlyLabel}>Sign out</Text>
-          </AppPressable>
+          {embeddedProfileChrome ? (
+            <AppPressable variant="link" style={styles.signOutBtn} onPress={onLogout}>
+              <Text style={styles.signOutOnlyLabel}>Sign out</Text>
+            </AppPressable>
+          ) : null}
         </View>
       </ScrollView>
-      <Pressable
-        style={({ pressed }) => [
-          styles.floatingActionButton,
-          styles.heroActionButton,
-          editMode ? styles.heroSaveButton : styles.heroEditButton,
-          pressed && styles.pressed,
-          saving && styles.heroButtonDisabled,
-        ]}
-        onPress={editMode ? handleSave : () => handleStartEdit()}
-        disabled={saving}
-      >
-        {editMode ? (
-          saving ? <ActivityIndicator size="small" color="#0F172A" /> : <Text style={styles.heroSaveButtonLabel}>Save</Text>
-        ) : (
-          <Text style={styles.heroEditButtonLabel}>Edit</Text>
-        )}
-      </Pressable>
+      {embeddedProfileChrome ? (
+        <Pressable
+          style={({ pressed }) => [
+            styles.floatingActionButton,
+            styles.heroActionButton,
+            editMode ? styles.heroSaveButton : styles.heroEditButton,
+            pressed && styles.pressed,
+            saving && styles.heroButtonDisabled,
+          ]}
+          onPress={editMode ? handleSave : () => handleStartEdit()}
+          disabled={saving}
+        >
+          {editMode ? (
+            saving ? <ActivityIndicator size="small" color="#0F172A" /> : <Text style={styles.heroSaveButtonLabel}>Save</Text>
+          ) : (
+            <Text style={styles.heroEditButtonLabel}>Edit</Text>
+          )}
+        </Pressable>
+      ) : null}
       <Modal visible={!!openTimePicker} transparent animationType="fade" onRequestClose={() => setOpenTimePicker(null)}>
         <View style={styles.pickerBackdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpenTimePicker(null)} />
