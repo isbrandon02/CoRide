@@ -222,6 +222,20 @@ export async function getImpact(accessToken) {
   return data;
 }
 
+/**
+ * @returns {Promise<{ users: Array<{ id: number, email: string, name: string, avatar_url?: string | null, score: number, total_saved: number, total_co2_kg: number, rides_shared: number, rank: number, is_current_user: boolean }> }>}
+ */
+export async function getLeaderboard(accessToken) {
+  const res = await apiFetch(`${API_BASE_URL}/leaderboard`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(parseErrorDetail(data, 'Could not load leaderboard'));
+  }
+  return data;
+}
+
 export async function patchRideStatus(accessToken, rideId, status) {
   const res = await apiFetch(`${API_BASE_URL}/rides/${rideId}`, {
     method: 'PATCH',

@@ -25,6 +25,7 @@ import {
   patchRideStatus,
 } from '../src/auth';
 import { ChatList, ChatThread } from './ChatTab';
+import GoalsScreen from './GoalsScreen';
 import ProfileSettingsScreen from './ProfileSettingsScreen';
 import RidesTab from './RidesTab';
 
@@ -49,6 +50,7 @@ const FILTERS = ['Morning', 'Afternoon', 'Evening'];
 const TAB_BAR_ITEMS = [
   { key: 'home', label: 'Home', iconOn: 'home', iconOff: 'home-outline' },
   { key: 'matches', label: 'Find', iconOn: 'search', iconOff: 'search-outline' },
+  { key: 'goals', label: 'Goals', iconOn: 'trophy', iconOff: 'trophy-outline' },
   { key: 'rides', label: 'Activity', iconOn: 'calendar', iconOff: 'calendar-outline' },
   { key: 'chat', label: 'Chat', iconOn: 'chatbubbles', iconOff: 'chatbubbles-outline' },
 ];
@@ -708,6 +710,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
       <StatusBar style="light" />
       <View style={s.root}>
         {tab === 'home' && <Home />}
+        {tab === 'goals' && <GoalsScreen accessToken={accessToken} bottomPadding={tabBarHeight} />}
         {tab === 'matches' && (
           <FindMatchesList
             displayedMatches={displayedMatches}

@@ -155,6 +155,23 @@ class ImpactResponse(BaseModel):
     weekly: list[dict[str, Any]]
 
 
+class LeaderboardEntryOut(BaseModel):
+    id: int
+    email: str
+    name: str
+    avatar_url: str | None = None
+    score: float
+    total_saved: float
+    total_co2_kg: float
+    rides_shared: int
+    rank: int
+    is_current_user: bool = False
+
+
+class LeaderboardResponse(BaseModel):
+    users: list[LeaderboardEntryOut]
+
+
 class ChatDmCreate(BaseModel):
     other_user_id: int = Field(..., ge=1)
 

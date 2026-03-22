@@ -14,7 +14,7 @@ from app.demo_seed import (
     seed_demo_chats,
     seed_demo_rides,
 )
-from app.routers import auth, chats, impact, matches, profile, rides
+from app.routers import auth, chats, impact, leaderboard, matches, profile, rides
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,7 @@ app.include_router(profile.router)
 app.include_router(matches.router)
 app.include_router(rides.router)
 app.include_router(impact.router)
+app.include_router(leaderboard.router)
 app.include_router(chats.router)
 
 
