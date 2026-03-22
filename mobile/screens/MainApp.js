@@ -480,14 +480,6 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
           <View style={s.homeHeaderActions}>
             <AppPressable
               variant="ghost"
-              style={s.homeAvatarBtn}
-              onPress={() => setHomeProfileMenuOpen(true)}
-              accessibilityLabel="Account menu"
-            >
-              <Avatar initials={userInitials(displayName, accountEmail)} color={C.brand} size={44} />
-            </AppPressable>
-            <AppPressable
-              variant="ghost"
               style={s.homeBellBtn}
               onPress={() => setNotifOpen(true)}
               accessibilityLabel={`Notifications${notifCount ? `, ${notifCount} unread` : ''}`}
@@ -499,6 +491,14 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
                   <Text style={s.homeBellBadgeTxt}>{notifCount > 9 ? '9+' : String(notifCount)}</Text>
                 </View>
               ) : null}
+            </AppPressable>
+            <AppPressable
+              variant="ghost"
+              style={s.homeAvatarBtn}
+              onPress={() => setHomeProfileMenuOpen(true)}
+              accessibilityLabel="Account menu"
+            >
+              <Avatar initials={userInitials(displayName, accountEmail)} color={C.brand} size={44} />
             </AppPressable>
           </View>
         </View>
