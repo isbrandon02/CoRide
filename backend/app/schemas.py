@@ -152,6 +152,27 @@ class ChatDmOut(BaseModel):
     title: str
 
 
+class ChatCandidateOut(BaseModel):
+    id: int
+    email: str
+    name: str
+    avatar_url: str | None = None
+
+
+class ChatCandidatesResponse(BaseModel):
+    users: list[ChatCandidateOut]
+
+
+class ChatGroupCreate(BaseModel):
+    user_ids: list[int] = Field(..., min_length=2)
+    title: str = Field(default="", max_length=200)
+
+
+class ChatGroupOut(BaseModel):
+    conversation_id: int
+    title: str
+
+
 class ChatConversationRename(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
 

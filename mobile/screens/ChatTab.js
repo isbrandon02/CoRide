@@ -13,6 +13,8 @@ import {
 
 import AppPressable from '../components/AppPressable';
 import {
+  createGroupChat,
+  getChatCandidates,
   getChatConversations,
   getChatMessages,
   renameChatConversation,
@@ -135,15 +137,14 @@ function ConversationRowAvatar({ members, isGroup, extraCount, fallbackTitle, fa
       />
     );
   }
-  const stack = list.slice(0, 4);
-  const n = stack.length;
-  const size = n >= 4 ? 28 : n === 3 ? 30 : 34;
+  const stack = list.slice(0, 2);
+  const size = 34;
   return (
     <View style={styles.stackWrap}>
       {stack.map((m, i) => (
         <View
           key={String(m.user_id)}
-          style={[styles.stackItem, { marginLeft: i === 0 ? 0 : -11, zIndex: 20 - i }]}
+          style={[styles.stackItem, { marginLeft: i === 0 ? 0 : -10, zIndex: 20 - i }]}
         >
           <View style={styles.stackRing}>
             <PhotoOrInitials
@@ -175,9 +176,17 @@ const aStyles = StyleSheet.create({
  * @param {{ accessToken: string | null, refreshKey?: number, bottomPadding: number, onOpenThread: (c: object) => void }} props
  */
 export function ChatList({ accessToken, refreshKey = 0, bottomPadding, onOpenThread }) {
+  const [mode, setMode] = useState('list');
   const [conversations, setConversations] = useState([]);
+  const [candidates, setCandidates] = useState([]);
+  const [candidateSearch, setCandidateSearch] = useState('');
+  const [groupTitle, setGroupTitle] = useState('');
+  const [selectedIds, setSelectedIds] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [candidateLoading, setCandidateLoading] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [candidateError, setCandidateError] = useState(null);
 
   useEffect(() => {
     if (!accessToken) {
@@ -215,12 +224,168 @@ export function ChatList({ accessToken, refreshKey = 0, bottomPadding, onOpenThr
     };
   }, [accessToken, refreshKey]);
 
+  useEffect(() => {
+    if (!accessToken || mode !== 'create') {
+      return;
+    }
+    let live = true;
+    setCandidateLoading(true);
+    setCandidateError(null);
+    getChatCandidates(accessToken)
+      .then((data) => {
+        if (!live) return;
+        setCandidates(Array.isArray(data.users) ? data.users : []);
+      })
+      .catch((e) => {
+        if (live) setCandidateError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (live) setCandidateLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [accessToken, mode]);
+
+  const filteredCandidates = candidates.filter((item) => {
+    const q = candidateSearch.trim().toLowerCase();
+    if (!q) return true;
+    return [item.name, item.email].some((v) => String(v || '').toLowerCase().includes(q));
+  });
+
+  function resetGroupComposer() {
+    setMode('list');
+    setCandidateSearch('');
+    setGroupTitle('');
+    setSelectedIds([]);
+    setCandidateError(null);
+  }
+
+  function toggleCandidate(userId) {
+    setSelectedIds((current) =>
+      current.includes(userId)
+        ? current.filter((id) => id !== userId)
+        : [...current, userId],
+    );
+  }
+
+  async function handleCreateGroup() {
+    if (!accessToken || selectedIds.length < 2 || createBusy) return;
+    setCreateBusy(true);
+    try {
+      const data = await createGroupChat(accessToken, {
+        user_ids: selectedIds,
+        title: groupTitle,
+      });
+      const opened = { id: String(data.conversation_id), title: data.title, is_group: true };
+      resetGroupComposer();
+      onOpenThread(opened);
+    } catch (e) {
+      setCandidateError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCreateBusy(false);
+    }
+  }
+
+  if (mode === 'create') {
+    return (
+      <View style={styles.flex}>
+        <View style={styles.head}>
+          <AppPressable variant="link" style={styles.backHit} onPress={resetGroupComposer}>
+            <Text style={styles.back}>‹ Back</Text>
+          </AppPressable>
+          <Text style={styles.title}>New Group</Text>
+          <View style={{ width: 56 }} />
+        </View>
+        <View style={styles.composeWrap}>
+          <TextInput
+            value={groupTitle}
+            onChangeText={setGroupTitle}
+            placeholder="Group name (optional)"
+            placeholderTextColor={C.faint}
+            style={styles.composeInput}
+          />
+          <TextInput
+            value={candidateSearch}
+            onChangeText={setCandidateSearch}
+            placeholder="Search coworkers"
+            placeholderTextColor={C.faint}
+            style={styles.composeInput}
+          />
+          <Text style={styles.composeHint}>Choose at least two coworkers to start a group chat.</Text>
+          {selectedIds.length > 0 ? (
+            <View style={styles.selectedWrap}>
+              {selectedIds.map((id) => {
+                const item = candidates.find((u) => u.id === id);
+                if (!item) return null;
+                return (
+                  <View key={String(id)} style={styles.selectedChip}>
+                    <Text style={styles.selectedChipTxt}>{item.name}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
+          {candidateError ? <Text style={styles.inlineError}>{candidateError}</Text> : null}
+        </View>
+        {candidateLoading ? (
+          <ActivityIndicator color={C.brand} style={{ marginTop: 28 }} />
+        ) : (
+          <FlatList
+            data={filteredCandidates}
+            keyExtractor={(item) => String(item.id)}
+            contentContainerStyle={[styles.listPad, { paddingBottom: 120 + bottomPadding }]}
+            renderItem={({ item }) => {
+              const selected = selectedIds.includes(item.id);
+              return (
+                <AppPressable
+                  variant="default"
+                  style={[styles.cRow, selected && styles.selectedRow]}
+                  onPress={() => toggleCandidate(item.id)}
+                >
+                  <PhotoOrInitials
+                    uri={item.avatar_url}
+                    name={item.name}
+                    userId={item.id}
+                    size={50}
+                  />
+                  <View style={styles.conversationTextWrap}>
+                    <Text style={styles.cName} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <Text style={styles.cPrev} numberOfLines={1}>
+                      {item.email}
+                    </Text>
+                  </View>
+                  <View style={[styles.checkMarkBubble, selected && styles.checkMarkBubbleOn]}>
+                    <Text style={styles.checkMarkTxt}>{selected ? '✓' : '+'}</Text>
+                  </View>
+                </AppPressable>
+              );
+            }}
+            ItemSeparatorComponent={() => <View style={styles.sep} />}
+          />
+        )}
+        <View style={[styles.createFooter, { paddingBottom: Math.max(bottomPadding, 12) }]}>
+          <AppPressable
+            variant="primary"
+            style={[styles.createGroupBtn, (selectedIds.length < 2 || createBusy) && styles.dimmed]}
+            onPress={handleCreateGroup}
+            disabled={selectedIds.length < 2 || createBusy}
+          >
+            <Text style={styles.createGroupTxt}>{createBusy ? 'Creating...' : 'Create group'}</Text>
+          </AppPressable>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.flex}>
       <View style={styles.head}>
         <Text style={styles.title}>Messages</Text>
-        <AppPressable variant="ghost" style={styles.ghostBtn} disabled>
-          <Text style={[styles.ghostText, { opacity: 0.45 }]}>+ Group</Text>
+        <AppPressable variant="ghost" style={styles.ghostBtn} onPress={() => setMode('create')}>
+          <Text style={styles.ghostText}>+ Group</Text>
         </AppPressable>
       </View>
       {loading ? (
@@ -250,7 +415,7 @@ export function ChatList({ accessToken, refreshKey = 0, bottomPadding, onOpenThr
                 fallbackTitle={item.title}
                 fallbackConvId={item.id}
               />
-              <View style={{ flex: 1, minWidth: 0 }}>
+              <View style={styles.conversationTextWrap}>
                 <Text style={styles.cName} numberOfLines={1}>
                   {item.title}
                 </Text>
@@ -509,11 +674,57 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   ghostText: { color: C.text, fontSize: 12, fontWeight: '700' },
+  composeWrap: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 10 },
+  composeInput: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: C.text,
+    marginBottom: 10,
+  },
+  composeHint: { color: C.muted, fontSize: 12, lineHeight: 18 },
+  selectedWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  selectedChip: {
+    backgroundColor: 'rgba(0,200,150,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,200,150,0.32)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  selectedChipTxt: { color: C.brand, fontSize: 12, fontWeight: '700' },
+  inlineError: { color: '#fda4af', fontSize: 12, marginTop: 10 },
   listPad: { paddingHorizontal: 8, paddingBottom: 24 },
   emptyInbox: { paddingHorizontal: 28, paddingVertical: 36, alignItems: 'center' },
   emptyTitle: { color: C.text, fontSize: 16, fontWeight: '700' },
   emptyBody: { color: C.muted, fontSize: 13, marginTop: 8, textAlign: 'center', lineHeight: 20 },
   cRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 12 },
+  conversationTextWrap: {
+    flex: 1,
+    minWidth: 0,
+    paddingLeft: 40,
+    paddingTop: 18,
+  },
+  selectedRow: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16 },
+  checkMarkBubble: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  checkMarkBubbleOn: {
+    backgroundColor: C.brand,
+    borderColor: C.brand,
+  },
+  checkMarkTxt: { color: C.text, fontSize: 14, fontWeight: '800' },
   fallbackIcon: {
     width: 50,
     height: 50,
@@ -523,7 +734,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   stackWrap: {
-    width: 56,
+    width: 50,
     height: 50,
     flexDirection: 'row',
     alignItems: 'center',
@@ -537,9 +748,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   plusBadge: {
-    minWidth: 28,
-    height: 28,
-    borderRadius: 14,
+    minWidth: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 2,
     borderColor: C.panel,
@@ -547,7 +758,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 6,
   },
-  plusBadgeTxt: { fontSize: 11, fontWeight: '800', color: C.text },
+  plusBadgeTxt: { fontSize: 10, fontWeight: '800', color: C.text },
   emoji: { fontSize: 22 },
   cName: { fontSize: 15, fontWeight: '600', color: C.text },
   cPrev: { fontSize: 12.5, color: C.muted, marginTop: 2 },
@@ -630,4 +841,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendTxt: { color: '#000', fontSize: 15, fontWeight: '800' },
+  createGroupBtn: {
+    minHeight: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.brand,
+  },
+  createGroupTxt: { color: '#000', fontSize: 14, fontWeight: '800' },
+  createFooter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    backgroundColor: C.panel,
+    borderTopWidth: 1,
+    borderTopColor: C.line,
+  },
+  dimmed: { opacity: 0.5 },
 });

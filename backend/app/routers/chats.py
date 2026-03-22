@@ -8,9 +8,13 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import ChatConversation, ChatMessage, ChatParticipant, User, UserProfile
 from app.schemas import (
+    ChatCandidateOut,
+    ChatCandidatesResponse,
     ChatConversationOut,
     ChatConversationRename,
     ChatConversationsResponse,
+    ChatGroupCreate,
+    ChatGroupOut,
     ChatConversationListItem,
     ChatDmCreate,
     ChatDmOut,
@@ -57,6 +61,23 @@ def _create_dm(db: Session, a: int, b: int) -> ChatConversation:
     db.flush()
     db.add(ChatParticipant(conversation_id=conv.id, user_id=a))
     db.add(ChatParticipant(conversation_id=conv.id, user_id=b))
+    return conv
+
+
+def _create_group(db: Session, creator_id: int, user_ids: list[int], title: str = "") -> ChatConversation:
+    unique_ids = []
+    seen = set()
+    for uid in [creator_id, *user_ids]:
+        if uid in seen:
+            continue
+        seen.add(uid)
+        unique_ids.append(uid)
+
+    conv = ChatConversation(title=title.strip())
+    db.add(conv)
+    db.flush()
+    for uid in unique_ids:
+        db.add(ChatParticipant(conversation_id=conv.id, user_id=uid))
     return conv
 
 
@@ -180,6 +201,36 @@ def list_conversations(
     return ChatConversationsResponse(conversations=items)
 
 
+@router.get("/candidates", response_model=ChatCandidatesResponse)
+def list_chat_candidates(
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ChatCandidatesResponse:
+    rows = db.execute(
+        select(User, UserProfile)
+        .outerjoin(UserProfile, UserProfile.user_id == User.id)
+        .where(User.id != current.id)
+        .order_by(User.email.asc())
+    ).all()
+
+    users: list[ChatCandidateOut] = []
+    for row in rows:
+        user = row[0]
+        profile = row[1]
+        if user is None:
+            continue
+        avatar_url = (profile.avatar_url or "").strip() if profile else ""
+        users.append(
+            ChatCandidateOut(
+                id=int(user.id),
+                email=user.email,
+                name=_name_from_email(user.email),
+                avatar_url=avatar_url or None,
+            )
+        )
+    return ChatCandidatesResponse(users=users)
+
+
 @router.post("/dm", response_model=ChatDmOut)
 def open_or_create_dm(
     body: ChatDmCreate,
@@ -208,6 +259,40 @@ def open_or_create_dm(
         conversation_id=conv.id,
         title=_name_from_email(other.email),
     )
+
+
+@router.post("/group", response_model=ChatGroupOut, status_code=status.HTTP_201_CREATED)
+def create_group_chat(
+    body: ChatGroupCreate,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ChatGroupOut:
+    requested_ids = []
+    for raw in body.user_ids:
+        uid = int(raw)
+        if uid == current.id:
+            continue
+        if uid not in requested_ids:
+            requested_ids.append(uid)
+
+    if len(requested_ids) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Select at least two other members for a group chat",
+        )
+
+    existing_users = db.scalars(select(User).where(User.id.in_(requested_ids))).all()
+    found_ids = {u.id for u in existing_users}
+    missing = [uid for uid in requested_ids if uid not in found_ids]
+    if missing:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="One or more users were not found")
+
+    names = [_name_from_email(u.email) for u in existing_users]
+    default_title = ", ".join(names[:3]) + ("…" if len(names) > 3 else "")
+    conv = _create_group(db, current.id, requested_ids, body.title.strip() or default_title)
+    db.commit()
+    db.refresh(conv)
+    return ChatGroupOut(conversation_id=conv.id, title=conv.title or default_title)
 
 
 @router.get("/{conversation_id}/messages", response_model=ChatMessagesResponse)

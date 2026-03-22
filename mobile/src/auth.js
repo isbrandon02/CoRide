@@ -251,6 +251,20 @@ export async function getChatConversations(accessToken) {
 }
 
 /**
+ * @returns {Promise<{ users: Array<{ id: number, email: string, name: string, avatar_url?: string | null }> }>}
+ */
+export async function getChatCandidates(accessToken) {
+  const res = await apiFetch(`${API_BASE_URL}/chats/candidates`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(parseErrorDetail(data, 'Could not load chat candidates'));
+  }
+  return data;
+}
+
+/**
  * @returns {Promise<{ conversation_id: number, title: string }>}
  */
 export async function openOrGetDm(accessToken, otherUserId) {
@@ -265,6 +279,28 @@ export async function openOrGetDm(accessToken, otherUserId) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(parseErrorDetail(data, 'Could not open chat'));
+  }
+  return data;
+}
+
+/**
+ * @returns {Promise<{ conversation_id: number, title: string }>}
+ */
+export async function createGroupChat(accessToken, body) {
+  const res = await apiFetch(`${API_BASE_URL}/chats/group`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      user_ids: Array.isArray(body.user_ids) ? body.user_ids : [],
+      title: (body.title ?? '').trim(),
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(parseErrorDetail(data, 'Could not create group chat'));
   }
   return data;
 }
