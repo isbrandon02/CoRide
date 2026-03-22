@@ -1203,7 +1203,7 @@ const s = StyleSheet.create({
     gap: 10,
     marginHorizontal: 16,
     marginTop: 14,
-    marginBottom: 16,
+    marginBottom: 10,
     backgroundColor: C.card,
     borderWidth: 1,
     borderColor: C.line,
@@ -1213,14 +1213,40 @@ const s = StyleSheet.create({
   },
   searchLbl: { color: C.faint, fontSize: 12, fontWeight: '700' },
   input: { flex: 1, color: C.text, fontSize: 14, paddingVertical: 0 },
-  chips: { paddingHorizontal: 16, gap: 8, paddingTop: 10, paddingBottom: 4 },
-  chip: {
+  /** Find: sort card (aligned with search field) */
+  findSortCard: {
+    marginHorizontal: 16,
+    marginBottom: 18,
     backgroundColor: C.card,
     borderWidth: 1,
     borderColor: C.line,
-    borderRadius: 99,
+    borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingTop: 11,
+    paddingBottom: 12,
+  },
+  findSortLabel: {
+    color: C.faint,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  findSortChips: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    alignItems: 'center',
+    gap: 8,
+    paddingRight: 4,
+  },
+  chip: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 99,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
   },
   chipOn: { backgroundColor: C.brandSoft, borderColor: C.brand },
   chipText: { color: C.muted, fontSize: 12, fontWeight: '700' },
@@ -1513,9 +1539,13 @@ function FindMatchesList({
             style={s.input}
           />
         </View>
-        <View style={{ marginTop: 4 }}>
-          <Text style={[s.searchLbl, { marginHorizontal: 16, marginBottom: 6 }]}>Sort</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
+        <View style={s.findSortCard}>
+          <Text style={s.findSortLabel}>Sort by</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={s.findSortChips}
+          >
             {FIND_SORT_OPTIONS.map((opt) => {
               const on = findSortMode === opt.id;
               return (
