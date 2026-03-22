@@ -1,14 +1,14 @@
 # CoRide
 
-CoRide is a carpooling app prototype for coworkers.
+CoRide is a carpooling app prototype designed for employees who commute to the same workplace.
 
-The idea behind it is pretty simple. A lot of people commute to the same office from nearby neighborhoods at roughly the same time, but they still drive alone. That means more traffic, more money spent on gas and parking, and a routine that can feel more isolating than it needs to. CoRide tries to make shared commuting feel easier, more normal, and worth doing.
+Many coworkers travel from nearby areas to the same office around the same time, yet they still drive alone. This creates unnecessary traffic, higher commuting costs, and more carbon emissions than needed. CoRide is meant to make shared commuting feel practical, normal, and actually worth doing. Instead of treating carpooling like an inconvenience, the app focuses on showing both the personal and environmental value of sharing rides.
 
-Instead of asking people to figure everything out on their own, the app collects a few basics like home area, office, work schedule, and vehicle details. From there, it suggests likely matches, lets people request rides, gives both sides a way to manage those requests, and shows the savings and environmental impact over time.
+Rather than expecting users to coordinate everything on their own, the app collects key commute details like general home area, office destination, work schedule, and vehicle availability. From there, CoRide suggests potential ride matches, lets users request or accept shared trips, and tracks long-term impact through money saved and emissions reduced. The goal is to make sustainability feel measurable and connected to everyday commuting decisions.
 
 ## What CoRide does
 
-The current prototype supports:
+The current app supports:
 
 - account creation and login
 - onboarding with commute and vehicle details
@@ -21,11 +21,11 @@ The current prototype supports:
 
 ## Why we built it
 
-We wanted to build something that sits in the overlap between climate, cost of living, and everyday routine.
+We built CoRide around the overlap between sustainability, commuting costs, and daily routine.
 
-A lot of sustainability ideas ask people to make major lifestyle changes. CoRide takes a smaller and more practical approach. If coworkers are already going to the same place at the same time, sharing that trip is one of the easiest changes they can make. It saves money, reduces emissions, and can make commuting feel a little less like dead time.
+A lot of sustainability solutions ask people to make major lifestyle changes, which can be hard to maintain. CoRide takes a smaller and more realistic approach. If coworkers are already going to the same place at roughly the same time, sharing that trip is one of the easiest ways to reduce environmental impact. It can lower emissions, save money, and make commuting feel a little less isolating.
 
-We also wanted this to feel like an actual product, not just a matching algorithm with a UI on top. That is why the project includes onboarding, ride coordination, chat, and progress tracking instead of stopping at one recommendation screen.
+We also wanted the project to feel like a real product, not just a matching algorithm with a simple interface on top. That is why the app includes onboarding, ride coordination, chat, and progress tracking instead of stopping at one recommendation screen.
 
 ## Project structure
 
@@ -61,9 +61,9 @@ That seeded data can include:
 
 You can turn that off in `backend/.env`:
 
-```env
+~~~env
 SEED_DEMO_ACCOUNTS=false
-```
+~~~
 
 ## Prerequisites
 
@@ -77,28 +77,28 @@ You will need:
 
 From the repo root:
 
-```bash
+~~~bash
 cd backend
 python -m venv .venv
-```
+~~~
 
 Activate the virtual environment:
 
-```bash
+~~~bash
 # Windows PowerShell
 .venv\Scripts\Activate.ps1
 
 # macOS or Linux
 source .venv/bin/activate
-```
+~~~
 
 Install dependencies and start the API:
 
-```bash
+~~~bash
 pip install -r requirements.txt
 copy .env.example .env
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
+~~~
 
 Useful backend URLs:
 
@@ -115,20 +115,20 @@ Notes:
 
 Open a second terminal from the repo root:
 
-```bash
+~~~bash
 cd mobile
 npm install
 copy .env.example .env
 npm start
-```
+~~~
 
 You can also use:
 
-```bash
+~~~bash
 npm run ios
 npm run android
 npm run web
-```
+~~~
 
 The mobile app expects the backend to already be running.
 
@@ -136,9 +136,9 @@ The mobile app expects the backend to already be running.
 
 The main mobile environment variable is:
 
-```env
+~~~env
 EXPO_PUBLIC_API_URL=http://your-backend-url:8000
-```
+~~~
 
 If you do not set it, the app falls back to local defaults:
 
@@ -147,17 +147,17 @@ If you do not set it, the app falls back to local defaults:
 
 If you are using a physical phone with Expo Go, set `EXPO_PUBLIC_API_URL` to your computer's local network IP, for example:
 
-```env
+~~~env
 EXPO_PUBLIC_API_URL=http://192.168.1.10:8000
-```
+~~~
 
 Your phone and computer need to be on the same Wi-Fi network.
 
 For route previews in the rides screen, you can also set:
 
-```env
+~~~env
 EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_key
-```
+~~~
 
 If that key is missing, the rest of the app still works. You just will not see the route preview image.
 
@@ -216,4 +216,4 @@ CoRide is still a prototype, but it already covers the full loop we cared about:
 - talk to people
 - track whether shared commuting is actually making a difference
 
-That is the core motivation of the project. Make carpooling feel less awkward to start, easier to coordinate, and more rewarding to keep doing.
+That is the core motivation behind the project. The goal is to make carpooling feel less awkward to start, easier to coordinate, and more rewarding to keep doing.
