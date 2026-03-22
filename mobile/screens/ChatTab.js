@@ -174,9 +174,9 @@ const aStyles = StyleSheet.create({
 });
 
 /**
- * @param {{ accessToken: string | null, refreshKey?: number, bottomPadding: number, onOpenThread: (c: object) => void }} props
+ * @param {{ accessToken: string | null, refreshKey?: number, bottomPadding: number, onOpenThread: (c: object) => void, onConversationsChanged?: () => void }} props
  */
-export function ChatList({ accessToken, refreshKey = 0, bottomPadding, onOpenThread }) {
+export function ChatList({ accessToken, refreshKey = 0, bottomPadding, onOpenThread, onConversationsChanged }) {
   const [mode, setMode] = useState('list');
   const [conversations, setConversations] = useState([]);
   const [candidates, setCandidates] = useState([]);
@@ -206,7 +206,7 @@ export function ChatList({ accessToken, refreshKey = 0, bottomPadding, onOpenThr
           list.map((c) => ({
             id: String(c.id),
             title: c.title,
-            preview: c.preview || '',
+            preview: c.preview || 'No messages yet. Tap to start chatting.',
             time: formatConvTime(c.time),
             is_group: !!(c.is_group ?? c.isGroup),
             members: Array.isArray(c.members) ? c.members : [],
@@ -291,6 +291,7 @@ export function ChatList({ accessToken, refreshKey = 0, bottomPadding, onOpenThr
         });
         opened = { id: String(data.conversation_id), title: data.title, is_group: true };
       }
+      onConversationsChanged?.();
       resetGroupComposer();
       onOpenThread(opened);
     } catch (e) {
@@ -440,9 +441,9 @@ export function ChatList({ accessToken, refreshKey = 0, bottomPadding, onOpenThr
                 <Text style={styles.cName} numberOfLines={1}>
                   {item.title}
                 </Text>
-                <Text style={styles.cPrev} numberOfLines={1}>
-                  {item.preview}
-                </Text>
+              <Text style={styles.cPrev} numberOfLines={1}>
+                  {item.preview || 'No messages yet. Tap to start chatting.'}
+              </Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
                 <Text style={styles.cTime}>{item.time}</Text>

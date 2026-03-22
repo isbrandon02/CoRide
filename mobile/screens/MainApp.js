@@ -312,6 +312,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
         const dm = await openOrGetDm(accessToken, otherId);
         setChatThread({ id: String(dm.conversation_id), title: dm.title, is_group: false });
         setChatSub('thread');
+        setChatRefreshKey((k) => k + 1);
         setTab('chat');
       } catch (e) {
         Alert.alert('Chat', e instanceof Error ? e.message : String(e));
@@ -542,6 +543,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
             accessToken={accessToken}
             refreshKey={chatRefreshKey}
             bottomPadding={tabBarHeight}
+            onConversationsChanged={() => setChatRefreshKey((k) => k + 1)}
             onOpenThread={(c) => {
               setChatThread({ id: c.id, title: c.title, is_group: !!c.is_group });
               setChatSub('thread');
@@ -609,6 +611,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
                   if (k === 'chat') {
                     setChatSub('list');
                     setChatThread(null);
+                    setChatRefreshKey((n) => n + 1);
                   }
                   if (k === 'matches') {
                     setFindFocusId(null);
