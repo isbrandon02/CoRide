@@ -144,6 +144,16 @@ def migrate_sqlite_schema() -> None:
             ccols = {r[1] for r in crows}
             if "title" not in ccols:
                 conn.execute(text("ALTER TABLE chat_conversations ADD COLUMN title TEXT NOT NULL DEFAULT ''"))
+        try:
+            rrows = conn.execute(text("PRAGMA table_info(rides)")).fetchall()
+        except Exception:
+            rrows = []
+        if rrows:
+            rcols = {r[1] for r in rrows}
+            if "requested_dates" not in rcols:
+                conn.execute(text("ALTER TABLE rides ADD COLUMN requested_dates JSON"))
+            if "availability_days" not in rcols:
+                conn.execute(text("ALTER TABLE rides ADD COLUMN availability_days JSON"))
 
 
 def get_db() -> Generator[Session, None, None]:

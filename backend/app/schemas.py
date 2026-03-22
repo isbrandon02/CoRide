@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel, EmailStr, Field
@@ -119,6 +119,7 @@ class MatchesResponse(BaseModel):
 class RideCreate(BaseModel):
     driver_id: int = Field(..., ge=1)
     note: str = Field(default="", max_length=2000)
+    requested_dates: list[date] = Field(default_factory=list, min_length=1, max_length=14)
 
 
 class RidePatch(BaseModel):
@@ -138,6 +139,8 @@ class RideOut(BaseModel):
     other_user: RideOtherUserOut
     note: str
     created_at: datetime
+    requested_dates: list[date] = Field(default_factory=list)
+    availability_days: list[str] = Field(default_factory=list)
     saved_usd: float | None = None
     co2_kg: float | None = None
     route_origin: str = ""

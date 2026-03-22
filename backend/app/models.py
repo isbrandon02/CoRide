@@ -69,6 +69,8 @@ class Ride(Base):
     driver_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     status: Mapped[str] = mapped_column(String(24), default="pending")
     note: Mapped[str] = mapped_column(Text, default="")
+    requested_dates: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    availability_days: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
