@@ -153,9 +153,6 @@ export default function RidesTab({ accessToken, bottomPadding, onPressFind, refr
           <Text style={styles.title}>Activity</Text>
           <Text style={styles.sub}>Your requests · rides with you as driver</Text>
         </View>
-        <AppPressable variant="ghost" style={styles.findBtn} onPress={onPressFind}>
-          <Text style={styles.findBtnTxt}>+ Find</Text>
-        </AppPressable>
       </View>
 
       <View style={styles.tabRow}>
@@ -385,8 +382,6 @@ const styles = StyleSheet.create({
   },
   title: { color: C.text, fontSize: 28, fontWeight: '800' },
   sub: { color: C.muted, fontSize: 13, marginTop: 4 },
-  findBtn: { backgroundColor: C.brand, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
-  findBtnTxt: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   tabRow: {
     flexDirection: 'row',
     marginHorizontal: 16,

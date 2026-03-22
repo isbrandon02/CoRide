@@ -357,7 +357,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
             <Text style={s.sub}>
               {matches.length === 0
                 ? 'No route matches yet — open Find when coworkers are onboarded'
-                : `${Math.min(matches.length, 3)} coworker${matches.length === 1 ? '' : 's'} on your route`}
+                : '3 coworkers from Two Sigma on your route today'}
             </Text>
           </View>
           <AppPressable
@@ -1097,18 +1097,15 @@ function FindMatchesList({
         <View style={s.head}>
           <View>
             <Text style={s.title}>Find a Ride</Text>
-            <Text style={s.sub}>Matched for tomorrow morning</Text>
+            <Text style={s.sub}>Two Sigma · matched for tomorrow morning</Text>
           </View>
-          <AppPressable variant="ghost" style={s.ghostBtn}>
-            <Text style={s.ghostText}>Filter</Text>
-          </AppPressable>
         </View>
         <View style={s.search}>
           <Text style={s.searchLbl}>Search</Text>
           <TextInput
             value={search}
             onChangeText={setSearch}
-            placeholder="Coworkers, teams, neighborhoods"
+            placeholder="Two Sigma, teams, neighborhoods"
             placeholderTextColor={C.faint}
             style={s.input}
           />
