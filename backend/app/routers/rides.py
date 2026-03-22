@@ -44,12 +44,9 @@ def _ride_to_out(ride: Ride, me: User, db: Session) -> RideOut:
         select(UserProfile).where(UserProfile.user_id == ride.driver_id)
     )
 
-    route_origin = (requester_profile.home_address if requester_profile else "") or ""
-    route_destination = (
-        (requester_profile.office_address if requester_profile else "")
-        or (driver_profile.office_address if driver_profile else "")
-        or ""
-    )
+    # Route previews should reflect the person offering the rideshare, i.e. the driver's commute.
+    route_origin = (driver_profile.home_address if driver_profile else "") or ""
+    route_destination = (driver_profile.office_address if driver_profile else "") or ""
 
     return RideOut(
         id=ride.id,
