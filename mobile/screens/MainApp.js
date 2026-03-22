@@ -41,10 +41,10 @@ const FIND_SORT_CO2 = 'co2';
 const FIND_SORT_SHARE = 'share';
 const FIND_SORT_RIDE = 'ride';
 const FIND_SORT_OPTIONS = [
+  { id: FIND_SORT_RIDE, label: 'Shortest ride' },
   { id: FIND_SORT_DEPART, label: 'Depart time' },
   { id: FIND_SORT_CO2, label: 'CO₂ saved' },
   { id: FIND_SORT_SHARE, label: 'Your share' },
-  { id: FIND_SORT_RIDE, label: 'Shortest ride' },
 ];
 
 /** Minutes since midnight for commute depart; unknown times sort last. */
@@ -533,7 +533,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
       >
         <View style={s.alertRow}>
           <View style={s.alertBody}>
-            <Text style={s.alertOver}>{pendingDriverIds.length ? 'Ride requested' : "Today's commute"}</Text>
+            <Text style={s.alertOver}>{pendingDriverIds.length ? 'Ride requested' : 'Your commute'}</Text>
             <Text style={s.alertTitle}>
               {commute
                 ? `${pendingDriverIds.length ? 'Waiting on' : 'Best match:'} ${commute.name}`
@@ -555,7 +555,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
           <Ionicons name="chevron-forward" size={22} color="rgba(2, 27, 20, 0.38)" style={s.alertChevron} />
         </View>
       </AppPressable>
-      <Text style={s.section}>Coworkers driving today</Text>
+      <Text style={s.section}>Coworkers for your commute</Text>
       {loadingMatches ? (
         <View style={s.skeletonBlock}>
           <Text style={s.skeletonCaption}>Finding matches…</Text>
@@ -1546,7 +1546,7 @@ function FindMatchesList({
         <View style={s.head}>
           <View>
             <Text style={s.title}>Find a Ride</Text>
-            <Text style={s.sub}>Two Sigma · matched for tomorrow morning</Text>
+            <Text style={s.sub}>Two Sigma · matched for your commute</Text>
           </View>
         </View>
         <View style={s.search}>
@@ -1608,7 +1608,7 @@ function FindMatchesList({
       return (
         <View style={[s.match, isTopMatch && !focused && { borderColor: C.brand }, focused && s.matchFocused]}>
           <View style={s.between}>
-            <Badge label={isTopMatch ? 'Top Match' : 'Driving tomorrow'} tone={isTopMatch ? 'brand' : 'gray'} />
+            <Badge label={isTopMatch ? 'Top Match' : 'Commute match'} tone={isTopMatch ? 'brand' : 'gray'} />
             {done ? <Badge label="Pending" tone="sky" /> : <Badge label={`${m.seats ?? 2} seats`} />}
           </View>
           <View style={[s.row, { marginHorizontal: 0, paddingHorizontal: 0 }]}>
