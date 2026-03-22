@@ -1,82 +1,219 @@
 # CoRide
 
+CoRide is a carpooling app prototype for coworkers.
+
+The idea behind it is pretty simple. A lot of people commute to the same office from nearby neighborhoods at roughly the same time, but they still drive alone. That means more traffic, more money spent on gas and parking, and a routine that can feel more isolating than it needs to. CoRide tries to make shared commuting feel easier, more normal, and worth doing.
+
+Instead of asking people to figure everything out on their own, the app collects a few basics like home area, office, work schedule, and vehicle details. From there, it suggests likely matches, lets people request rides, gives both sides a way to manage those requests, and shows the savings and environmental impact over time.
+
+## What CoRide does
+
+The current prototype supports:
+
+- account creation and login
+- onboarding with commute and vehicle details
+- coworker match suggestions based on route overlap and schedule fit
+- ride requests with pending, accepted, declined, cancelled, and completed states
+- direct messages and group chat
+- an activity view for upcoming and past rides
+- impact tracking for money saved, rides shared, and CO2 avoided
+- badges, weekly goals, and a leaderboard
+
+## Why we built it
+
+We wanted to build something that sits in the overlap between climate, cost of living, and everyday routine.
+
+A lot of sustainability ideas ask people to make major lifestyle changes. CoRide takes a smaller and more practical approach. If coworkers are already going to the same place at the same time, sharing that trip is one of the easiest changes they can make. It saves money, reduces emissions, and can make commuting feel a little less like dead time.
+
+We also wanted this to feel like an actual product, not just a matching algorithm with a UI on top. That is why the project includes onboarding, ride coordination, chat, and progress tracking instead of stopping at one recommendation screen.
+
+## Project structure
+
+- `mobile/` contains the Expo React Native app
+- `backend/` contains the FastAPI API and local SQLite setup
+
+## Tech stack
+
+- Mobile: Expo, React Native, React 19
+- Backend: FastAPI, SQLAlchemy, SQLite
+- Auth: JWT bearer auth
+- Maps: Google Maps APIs for route preview and address-related features
+
+## How matching works
+
+The backend ranks potential carpool partners using two signals:
+
+- route overlap, weighted at 60%
+- work start time proximity, weighted at 40%
+
+The mobile app then shows practical ride details like estimated ride time, detour, cost share, and CO2 saved.
+
+## Demo mode
+
+The backend seeds demo data on startup by default so the app is easier to explore during local development and demos.
+
+That seeded data can include:
+
+- demo accounts
+- profile photos
+- sample rides
+- sample chat threads
+
+You can turn that off in `backend/.env`:
+
+```env
+SEED_DEMO_ACCOUNTS=false
+```
+
 ## Prerequisites
 
-- **Node.js** (LTS) and **npm**
-- **Python 3.10+** (for the backend)
-- **iOS:** Xcode (Simulator) or a physical iPhone with the [Expo Go](https://expo.dev/go) app
-- **Android:** Android Studio / emulator, or a physical Android device with Expo Go
+You will need:
 
-## Run the mobile app (Expo / React Native)
+- Node.js and npm
+- Python 3.10+
+- Expo Go on a phone, or an iOS simulator / Android emulator
 
-From the repo root:
-
-```bash
-cd mobile
-npm install
-npm start
-```
-
-This opens the Expo dev tools in the terminal and browser. From there you can:
-
-- Press **`i`** to open the **iOS Simulator** (macOS with Xcode)
-- Press **`a`** to open an **Android emulator** (with Android Studio set up)
-- Scan the QR code with **Expo Go** on a physical device (same Wi‑Fi as your computer)
-
-Other scripts:
-
-```bash
-npm run ios      # start and target iOS
-npm run android  # start and target Android
-npm run web      # run in the browser via Expo web
-```
-
-The app includes **login** and **register** screens (`POST /auth/signup` then `POST /auth/token`). Start the backend first.
-
-**API URL:** the app defaults to **iOS Simulator → `http://127.0.0.1:8000`** and **Android Emulator → `http://10.0.2.2:8000`**. On a **physical phone** (Expo Go), `127.0.0.1` is the phone itself, so you must set `EXPO_PUBLIC_API_URL` to your **computer’s LAN IP** (same Wi‑Fi), e.g. `http://192.168.1.10:8000`, in `mobile/.env`, then **restart Expo** after any `.env` change.
-
-If you see **“Network request failed”**, the app cannot reach the backend: confirm `uvicorn` is running with `--host 0.0.0.0 --port 8000`, fix the URL above, and on macOS check the firewall is not blocking Python.
-
-## Run the backend (FastAPI)
+## Run the backend
 
 From the repo root:
 
 ```bash
 cd backend
-python3 -m venv .venv
-source .venv/bin/activate    # Windows: .venv\Scripts\activate
+python -m venv .venv
+```
+
+Activate the virtual environment:
+
+```bash
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+
+# macOS or Linux
+source .venv/bin/activate
+```
+
+Install dependencies and start the API:
+
+```bash
 pip install -r requirements.txt
-cp .env.example .env         # optional: set SECRET_KEY
+copy .env.example .env
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-- API: [http://127.0.0.1:8000](http://127.0.0.1:8000)
-- Health check: [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health)
-- Interactive docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+Useful backend URLs:
 
-Stop the server with **Ctrl+C**.
+- API root: `http://127.0.0.1:8000`
+- Health check: `http://127.0.0.1:8000/health`
+- Swagger docs: `http://127.0.0.1:8000/docs`
 
-### Authentication (signup + JWT / OAuth2)
+Notes:
 
-The API stores users in **SQLite** under **`backend/data/coride.db`** by default. Configure secrets via **`backend/.env`** (see **`backend/.env.example`**).
+- the default database is `backend/data/coride.db`
+- `backend/.env` controls the secret key, token lifetime, database URL, and demo seeding behavior
 
-| Endpoint | Description |
-|----------|-------------|
-| `POST /auth/signup` | JSON body: `{ "email", "password" }` (password min 8 chars). Creates the account; you can sign in immediately. |
-| `POST /auth/token` | **OAuth2 password flow**: form fields `username` (your **email**) and `password`. Returns `{ "access_token", "token_type": "bearer" }`. |
-| `GET /auth/me` | Requires `Authorization: Bearer <token>`. Returns `onboarding_completed` (false until the first profile save). |
-| `GET /profile` | Same auth. Returns home, office, work schedule, vehicle, and `onboarding_completed`. |
-| `PUT /profile` | Same auth. Body: `home_address`, `office_address`, `work_schedule` (`days`, `start_time`, `end_time`), `vehicle` (`make`, `model`, `year`, `color`). Saves data and sets `onboarding_completed` to true. |
+## Run the mobile app
 
-In **Swagger UI** ([`/docs`](http://127.0.0.1:8000/docs)), use **Authorize** with the token from `/auth/token`, or call **POST /auth/token** with `application/x-www-form-urlencoded` (`username` + `password`).
+Open a second terminal from the repo root:
 
-The mobile app shows an **onboarding** form the first time you sign in (when `onboarding_completed` is false): home, office, work schedule, and car details.
+```bash
+cd mobile
+npm install
+copy .env.example .env
+npm start
+```
 
-If you see **`attempt to write a readonly database`**: ensure **`backend/data/`** and **`backend/data/coride.db`** are writable (not read-only on disk, not stuck in a read-only sync folder). Stop uvicorn, remove any **`coride.db-wal`** / **`coride.db-shm`** next to the DB if present, run **`chmod -R u+rwX backend/data`**, then start the server again. Or set **`DATABASE_URL`** to a path under **`/tmp`** for local dev.
+You can also use:
 
-## Troubleshooting (Expo Go)
+```bash
+npm run ios
+npm run android
+npm run web
+```
 
-If you see **“Project is incompatible with this version of Expo Go”**, the app’s **Expo SDK** (this repo uses **SDK 54**) is newer than the **Expo Go** build on your phone.
+The mobile app expects the backend to already be running.
 
-1. Update **Expo Go** from the [App Store](https://apps.apple.com/app/expo-go/id982107779) (iOS) or [Google Play](https://play.google.com/store/apps/details?id=host.exp.exponent) (Android), then try again.
-2. If you cannot update the device, use the **iOS Simulator** or **Android emulator** (`npm run ios` / `npm run android`), or downgrade the project’s Expo SDK to match [Expo Go’s supported SDK](https://expo.dev/go).
+## Mobile environment setup
+
+The main mobile environment variable is:
+
+```env
+EXPO_PUBLIC_API_URL=http://your-backend-url:8000
+```
+
+If you do not set it, the app falls back to local defaults:
+
+- iOS Simulator: `http://127.0.0.1:8000`
+- Android Emulator: `http://10.0.2.2:8000`
+
+If you are using a physical phone with Expo Go, set `EXPO_PUBLIC_API_URL` to your computer's local network IP, for example:
+
+```env
+EXPO_PUBLIC_API_URL=http://192.168.1.10:8000
+```
+
+Your phone and computer need to be on the same Wi-Fi network.
+
+For route previews in the rides screen, you can also set:
+
+```env
+EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_key
+```
+
+If that key is missing, the rest of the app still works. You just will not see the route preview image.
+
+After changing `mobile/.env`, restart Expo completely.
+
+## Typical local flow
+
+1. Start the backend in `backend/`
+2. Start the mobile app in `mobile/`
+3. Register a new account or use demo data
+4. Complete onboarding
+5. Open Find to see ranked commute matches
+6. Request a ride, message someone, and check Activity and Goals
+
+## API overview
+
+Some of the main routes are:
+
+- `POST /auth/signup` to create an account
+- `POST /auth/token` to log in and get a bearer token
+- `GET /auth/me` to fetch the signed-in user
+- `GET /profile` and `PUT /profile` for onboarding and profile updates
+- `GET /matches` for ranked commute matches
+- `GET /rides`, `POST /rides`, and `PATCH /rides/{ride_id}` for ride management
+- `GET /impact` for savings and emissions data
+- `GET /leaderboard` for rankings
+- `/chats/*` routes for conversations and messages
+
+If you want to explore the backend directly, `http://127.0.0.1:8000/docs` is the easiest place to start.
+
+## Troubleshooting
+
+If the mobile app shows `Network request failed`:
+
+- make sure the backend is running on port `8000`
+- make sure `EXPO_PUBLIC_API_URL` points to the right machine
+- remember that `127.0.0.1` on a physical phone is the phone itself, not your computer
+
+If Expo Go says the project is incompatible:
+
+- update Expo Go on your device
+- or run the app in a simulator or emulator instead
+
+If SQLite reports a read-only database:
+
+- check that `backend/data/` is writable
+- make sure the database file is not locked or marked read-only by your system or sync tool
+
+## Current state
+
+CoRide is still a prototype, but it already covers the full loop we cared about:
+
+- set up your commute
+- find likely coworkers
+- request and manage rides
+- talk to people
+- track whether shared commuting is actually making a difference
+
+That is the core motivation of the project. Make carpooling feel less awkward to start, easier to coordinate, and more rewarding to keep doing.
