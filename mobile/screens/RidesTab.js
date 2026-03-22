@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,6 +11,7 @@ import {
 } from 'react-native';
 
 import AppPressable from '../components/AppPressable';
+import { GOOGLE_MAPS_API_KEY } from '../src/config';
 import { getRides, patchRideStatus } from '../src/auth';
 
 const C = {
@@ -40,6 +42,147 @@ function formatRideWhen(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function shortAddress(address) {
+  if (!address) return '';
+  const line = String(address).split(',')[0].trim();
+  return line.length > 34 ? `${line.slice(0, 31)}...` : line;
+}
+
+function buildStaticMapUrl({ apiKey, origin, destination, polyline }) {
+  if (!apiKey || !origin || !destination) return null;
+  const params = new URLSearchParams({
+    size: '1200x320',
+    scale: '2',
+    maptype: 'roadmap',
+    key: apiKey,
+  });
+  params.append('markers', `size:mid|color:0x00c896|label:S|${origin}`);
+  params.append('markers', `size:mid|color:0x4ea8f5|label:E|${destination}`);
+  params.append('style', 'feature:poi|visibility:off');
+  params.append('style', 'feature:transit|visibility:off');
+  if (polyline) {
+    params.append('path', `weight:5|color:0x00c896cc|enc:${polyline}`);
+  } else {
+    params.append('visible', origin);
+    params.append('visible', destination);
+  }
+  return `https://maps.googleapis.com/maps/api/staticmap?${params.toString()}`;
+}
+
+async function fetchRoutePolyline({ origin, destination, apiKey, signal }) {
+  const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': 'routes.polyline.encodedPolyline',
+    },
+    body: JSON.stringify({
+      origin: { address: origin },
+      destination: { address: destination },
+      travelMode: 'DRIVE',
+    }),
+    signal,
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data?.error?.message || 'Could not load route');
+  }
+
+  return data?.routes?.[0]?.polyline?.encodedPolyline || '';
+}
+
+function RoutePreview({ ride }) {
+  const origin = String(ride.route_origin ?? '').trim();
+  const destination = String(ride.route_destination ?? '').trim();
+  const hasMapSetup = Boolean(GOOGLE_MAPS_API_KEY);
+  const hasRouteAddresses = Boolean(origin && destination);
+  const [polyline, setPolyline] = useState('');
+  const [loadingRoute, setLoadingRoute] = useState(false);
+
+  useEffect(() => {
+    if (!hasMapSetup || !hasRouteAddresses) {
+      setPolyline('');
+      setLoadingRoute(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setLoadingRoute(true);
+
+    fetchRoutePolyline({
+      origin,
+      destination,
+      apiKey: GOOGLE_MAPS_API_KEY,
+      signal: controller.signal,
+    })
+      .then((encodedPolyline) => {
+        setPolyline(encodedPolyline);
+      })
+      .catch(() => {
+        setPolyline('');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setLoadingRoute(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [origin, destination, hasMapSetup, hasRouteAddresses]);
+
+  const imageUrl = useMemo(
+    () =>
+      buildStaticMapUrl({
+        apiKey: GOOGLE_MAPS_API_KEY,
+        origin,
+        destination,
+        polyline,
+      }),
+    [origin, destination, polyline],
+  );
+
+  return (
+    <View style={styles.mapBox}>
+      {imageUrl ? (
+        <>
+          <Image source={{ uri: imageUrl }} style={styles.mapImg} resizeMode="cover" />
+          <View style={styles.mapShade} />
+          {loadingRoute ? (
+            <View style={styles.mapLoader}>
+              <ActivityIndicator color={C.brand} size="small" />
+            </View>
+          ) : null}
+          <View style={styles.mapMeta}>
+            <View style={styles.mapPill}>
+              <Text style={styles.mapPillLabel}>Start</Text>
+              <Text style={styles.mapPillText}>{shortAddress(origin)}</Text>
+            </View>
+            <View style={styles.mapPill}>
+              <Text style={styles.mapPillLabel}>Destination</Text>
+              <Text style={styles.mapPillText}>{shortAddress(destination)}</Text>
+            </View>
+          </View>
+        </>
+      ) : (
+        <View style={styles.mapFallback}>
+          <Text style={styles.mapCap}>Route preview</Text>
+          <Text style={styles.mapFallbackTitle}>
+            {!hasMapSetup ? 'Add a Google Maps API key' : 'Route preview unavailable'}
+          </Text>
+          <Text style={styles.mapFallbackSub}>
+            {!hasMapSetup
+              ? 'Set EXPO_PUBLIC_GOOGLE_MAPS_API_KEY to render the static map.'
+              : 'This ride is missing a start or destination address.'}
+          </Text>
+        </View>
+      )}
+      {imageUrl ? <Text style={styles.mapCapOverlay}>Route preview</Text> : null}
+    </View>
+  );
 }
 
 function Badge({ label, tone = 'brand' }) {
@@ -210,9 +353,7 @@ export default function RidesTab({ accessToken, bottomPadding, onPressFind, refr
                     </View>
                     <Badge label={statusLabel} tone={tone} />
                   </View>
-                  <View style={styles.mapBox}>
-                    <Text style={styles.mapCap}>Route preview</Text>
-                  </View>
+                  <RoutePreview ride={ride} />
                   <View style={styles.drvRow}>
                     <Avatar initials={ini} color={C.brand} />
                     <View style={{ flex: 1 }}>
@@ -409,13 +550,70 @@ const styles = StyleSheet.create({
   badge: { borderRadius: 99, paddingHorizontal: 10, paddingVertical: 5 },
   badgeTxt: { fontSize: 11, fontWeight: '800' },
   mapBox: {
-    height: 100,
+    height: 148,
     borderRadius: 13,
     marginTop: 12,
     backgroundColor: 'rgba(255,255,255,0.03)',
-    justifyContent: 'flex-end',
+    overflow: 'hidden',
   },
-  mapCap: { padding: 10, fontSize: 11, color: C.faint, fontWeight: '600' },
+  mapImg: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  mapShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(17,17,24,0.16)',
+  },
+  mapLoader: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapMeta: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    gap: 8,
+    padding: 12,
+  },
+  mapPill: {
+    alignSelf: 'flex-start',
+    maxWidth: '85%',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: 'rgba(17,17,24,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  mapPillLabel: {
+    fontSize: 10,
+    color: C.faint,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  mapPillText: { fontSize: 12, color: C.text, fontWeight: '600', marginTop: 2 },
+  mapCap: { fontSize: 11, color: C.faint, fontWeight: '600' },
+  mapCapOverlay: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    fontSize: 11,
+    color: C.faint,
+    fontWeight: '700',
+    backgroundColor: 'rgba(17,17,24,0.82)',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  mapFallback: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    padding: 12,
+  },
+  mapFallbackTitle: { fontSize: 14, color: C.text, fontWeight: '700', marginTop: 8 },
+  mapFallbackSub: { fontSize: 12, color: C.muted, marginTop: 6, lineHeight: 18 },
   drvRow: {
     flexDirection: 'row',
     alignItems: 'center',

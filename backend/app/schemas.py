@@ -130,6 +130,8 @@ class RideOut(BaseModel):
     created_at: datetime
     saved_usd: float | None = None
     co2_kg: float | None = None
+    route_origin: str = ""
+    route_destination: str = ""
 
 
 class RidesResponse(BaseModel):

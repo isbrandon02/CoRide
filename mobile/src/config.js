@@ -37,5 +37,7 @@ function defaultBaseUrl() {
 }
 
 const fromEnv = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
+const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim();
 
 export const API_BASE_URL = fromEnv || apiUrlFromExpoHost() || defaultBaseUrl();
+export const GOOGLE_MAPS_API_KEY = googleMapsApiKey || '';

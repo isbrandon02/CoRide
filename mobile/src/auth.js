@@ -168,7 +168,7 @@ export async function saveOnboarding(accessToken, payload) {
 }
 
 /**
- * @returns {Promise<{ rides: Array<{ id: number, status: string, role: string, other_user: { id: number, email: string, name: string }, note: string, created_at: string }> }>}
+ * @returns {Promise<{ rides: Array<{ id: number, status: string, role: string, other_user: { id: number, email: string, name: string }, note: string, created_at: string, route_origin?: string, route_destination?: string }> }>}
  */
 export async function getRides(accessToken) {
   const res = await apiFetch(`${API_BASE_URL}/rides`, {

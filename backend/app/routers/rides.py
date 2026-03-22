@@ -6,7 +6,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Ride, User
+from app.models import Ride, User, UserProfile
 from app.schemas import RideCreate, RideOut, RidePatch, RidesResponse, RideOtherUserOut
 from app.security import get_current_user
 
@@ -25,14 +25,32 @@ def _name_from_email(email: str) -> str:
 
 
 def _ride_to_out(ride: Ride, me: User, db: Session) -> RideOut:
+    requester = db.get(User, ride.requester_id)
+    driver = db.get(User, ride.driver_id)
+    if requester is None or driver is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Missing user")
+
     if me.id == ride.requester_id:
         role = "requester"
-        other = db.get(User, ride.driver_id)
+        other = driver
     else:
         role = "driver"
-        other = db.get(User, ride.requester_id)
-    if other is None:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Missing user")
+        other = requester
+
+    requester_profile = db.scalar(
+        select(UserProfile).where(UserProfile.user_id == ride.requester_id)
+    )
+    driver_profile = db.scalar(
+        select(UserProfile).where(UserProfile.user_id == ride.driver_id)
+    )
+
+    route_origin = (requester_profile.home_address if requester_profile else "") or ""
+    route_destination = (
+        (requester_profile.office_address if requester_profile else "")
+        or (driver_profile.office_address if driver_profile else "")
+        or ""
+    )
+
     return RideOut(
         id=ride.id,
         status=ride.status,
@@ -46,6 +64,8 @@ def _ride_to_out(ride: Ride, me: User, db: Session) -> RideOut:
         created_at=ride.created_at,
         saved_usd=ride.saved_usd,
         co2_kg=ride.co2_kg,
+        route_origin=route_origin.strip(),
+        route_destination=route_destination.strip(),
     )
 
 
