@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   Modal,
@@ -27,20 +26,7 @@ import {
 import { ChatList, ChatThread } from './ChatTab';
 import ProfileSettingsScreen from './ProfileSettingsScreen';
 import RidesTab from './RidesTab';
-
-const C = {
-  bg: '#0a0a0f',
-  panel: '#111118',
-  card: '#18181f',
-  line: 'rgba(255,255,255,0.08)',
-  text: '#f0f0f5',
-  muted: 'rgba(240,240,245,0.62)',
-  faint: 'rgba(240,240,245,0.34)',
-  brand: '#00c896',
-  brandSoft: 'rgba(0,200,150,0.12)',
-  sky: '#4ea8f5',
-  amber: '#f5a623',
-};
+import { colors as C, type as T } from '../src/theme';
 
 const EMPTY_IMPACT = { saved: 0, co2: 0, rides: 0, weekly: [] };
 const MATCH_COLORS = [C.brand, C.amber, C.sky];
@@ -398,7 +384,12 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
       </AppPressable>
       <Text style={s.section}>Coworkers driving today</Text>
       {loadingMatches ? (
-        <ActivityIndicator color={C.brand} style={s.loader} />
+        <View style={s.skeletonBlock}>
+          <Text style={s.skeletonCaption}>Finding matches…</Text>
+          {[0, 1, 2].map((k) => (
+            <View key={k} style={s.skeletonRow} />
+          ))}
+        </View>
       ) : matches.length === 0 ? (
         <View style={s.card}>
           <Text style={s.rowTitle}>No matches yet</Text>
@@ -430,7 +421,11 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
       )}
       <Text style={s.section}>Your Impact</Text>
       {loadingImpact ? (
-        <ActivityIndicator color={C.brand} style={{ paddingVertical: 24 }} />
+        <View style={s.stats}>
+          {[0, 1, 2].map((k) => (
+            <View key={k} style={[s.stat, s.skeletonStat]} />
+          ))}
+        </View>
       ) : (
         <View style={s.stats}>
           <View style={s.stat}>
@@ -604,6 +599,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
                 key={k}
                 variant="tab"
                 style={[s.tab, on && s.tabOn]}
+                hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: on }}
                 accessibilityLabel={l}
@@ -701,7 +697,7 @@ const s = StyleSheet.create({
     borderRadius: 12,
   },
   profileBackText: { color: C.text, fontSize: 17, fontWeight: '600' },
-  pad: { paddingBottom: 112 },
+  pad: { paddingBottom: 120 },
   homeHeaderRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -761,12 +757,12 @@ const s = StyleSheet.create({
   },
   section: {
     color: C.faint,
-    fontSize: 11,
+    fontSize: T.caption,
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 1,
-    marginTop: 20,
-    marginBottom: 10,
+    marginTop: 26,
+    marginBottom: 12,
     paddingHorizontal: 20,
   },
   alert: {
@@ -834,8 +830,10 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.line,
     borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minHeight: 44,
+    justifyContent: 'center',
     overflow: 'hidden',
   },
   ghostBtnWide: {
@@ -890,6 +888,51 @@ const s = StyleSheet.create({
   tipText: { color: C.text, fontSize: 12.5 },
   center: { paddingVertical: 40, alignItems: 'center' },
   loader: { paddingVertical: 24 },
+  skeletonBlock: {
+    marginTop: 4,
+    paddingBottom: 8,
+  },
+  skeletonCaption: {
+    color: C.faint,
+    fontSize: T.bodyMd,
+    fontWeight: '600',
+    paddingHorizontal: 20,
+    marginBottom: 14,
+  },
+  skeletonRow: {
+    height: 72,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: C.line,
+  },
+  skeletonStat: {
+    minHeight: 88,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  findSkeletonWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 32,
+  },
+  findSkeletonCaption: {
+    color: C.muted,
+    fontSize: T.bodyMd,
+    textAlign: 'center',
+    marginBottom: 18,
+    lineHeight: 20,
+  },
+  skeletonMatchCard: {
+    height: 260,
+    marginBottom: 14,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: C.line,
+  },
   match: {
     marginHorizontal: 16,
     marginBottom: 12,
@@ -967,9 +1010,15 @@ const s = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 16,
     paddingHorizontal: 20,
+    minHeight: 52,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'stretch',
+    shadowColor: C.brand,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    elevation: 5,
   },
   sheetConfirmText: {
     color: '#FFFFFF',
@@ -1010,10 +1059,17 @@ const s = StyleSheet.create({
     borderTopColor: C.line,
     paddingTop: 10,
   },
-  tab: { borderRadius: 14, paddingHorizontal: 6, paddingVertical: 6, minWidth: 56 },
+  tab: {
+    borderRadius: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    minWidth: 56,
+    minHeight: 48,
+    justifyContent: 'center',
+  },
   tabOn: { backgroundColor: C.brandSoft },
-  tabInner: { alignItems: 'center', justifyContent: 'center', gap: 3 },
-  tabText: { color: C.faint, fontSize: 10, fontWeight: '700' },
+  tabInner: { alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 40 },
+  tabText: { color: C.faint, fontSize: T.caption, fontWeight: '700' },
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
     backgroundColor: C.panel,
@@ -1138,9 +1194,11 @@ function FindMatchesList({
           <Text style={s.tipText}>Score = route overlap x 0.6 + time proximity x 0.4</Text>
         </View>
         {loadingMatches ? (
-          <View style={s.center}>
-            <ActivityIndicator size="large" color={C.brand} />
-            <Text style={s.sub}>Finding your best commute matches...</Text>
+          <View style={s.findSkeletonWrap}>
+            <Text style={s.findSkeletonCaption}>Finding your best commute matches…</Text>
+            {[0, 1].map((k) => (
+              <View key={k} style={s.skeletonMatchCard} />
+            ))}
           </View>
         ) : displayedMatches.length === 0 ? (
           <View style={s.card}>

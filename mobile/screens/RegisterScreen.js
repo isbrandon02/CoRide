@@ -13,19 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import AppPressable from '../components/AppPressable';
 import { registerAccount } from '../src/auth';
-
-/** Aligned with MainApp.js `C` */
-const C = {
-  bg: '#0a0a0f',
-  panel: '#111118',
-  card: '#18181f',
-  line: 'rgba(255,255,255,0.08)',
-  text: '#f0f0f5',
-  muted: 'rgba(240,240,245,0.62)',
-  faint: 'rgba(240,240,245,0.34)',
-  brand: '#00c896',
-  brandSoft: 'rgba(0,200,150,0.12)',
-};
+import { colors as C, layout, radius, type as T } from '../src/theme';
 
 export default function RegisterScreen({ onGoToLogin }) {
   const [email, setEmail] = useState('');
@@ -177,6 +165,7 @@ export default function RegisterScreen({ onGoToLogin }) {
             style={[styles.button, loading && styles.buttonDisabled]}
             onPress={handleSubmit}
             disabled={loading}
+            hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
           >
             {loading ? (
               <ActivityIndicator color="#FFFFFF" />
@@ -230,28 +219,28 @@ const styles = StyleSheet.create({
   },
   brandWord: {
     color: C.brand,
-    fontSize: 13,
+    fontSize: T.caption,
     fontWeight: '800',
     letterSpacing: 2,
     marginBottom: 8,
   },
   heroLine: {
     color: C.muted,
-    fontSize: 14,
+    fontSize: T.bodyMd,
     fontWeight: '600',
     marginBottom: 4,
   },
   title: {
     color: C.text,
-    fontSize: 28,
+    fontSize: T.display,
     fontWeight: '800',
     letterSpacing: -0.5,
   },
   sub: {
     color: C.muted,
-    fontSize: 13,
+    fontSize: T.body,
     marginTop: 8,
-    lineHeight: 19,
+    lineHeight: 20,
     maxWidth: 320,
   },
   card: {
@@ -260,14 +249,14 @@ const styles = StyleSheet.create({
     backgroundColor: C.card,
     borderWidth: 1,
     borderColor: C.line,
-    borderRadius: 18,
+    borderRadius: radius.xl,
     paddingHorizontal: 16,
     paddingTop: 18,
     paddingBottom: 20,
   },
   sectionEyebrow: {
     color: C.faint,
-    fontSize: 11,
+    fontSize: T.caption,
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 1,
@@ -312,8 +301,8 @@ const styles = StyleSheet.create({
   },
   errorText: {
     flex: 1,
-    color: '#ff8a80',
-    fontSize: 14,
+    color: C.dangerText,
+    fontSize: T.bodyMd,
     lineHeight: 20,
   },
   successBlock: {
@@ -336,11 +325,11 @@ const styles = StyleSheet.create({
   button: {
     marginTop: 18,
     backgroundColor: C.brand,
-    borderRadius: 12,
+    borderRadius: radius.md,
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 50,
+    minHeight: layout.hitMin,
     alignSelf: 'stretch',
   },
   buttonDisabled: {
