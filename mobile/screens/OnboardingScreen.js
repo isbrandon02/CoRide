@@ -14,8 +14,9 @@ import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
 import AppPressable from '../components/AppPressable';
 import { hasGoogleMapsKey, normalizeAddressWithGoogle } from '../src/googleMaps';
 import { saveOnboarding } from '../src/auth';
+import { colors, radius, space, type as T } from '../src/theme';
 
-const accent = '#00c896';
+const accent = colors.brand;
 
 export default function OnboardingScreen({ accessToken, onComplete, onSignOut }) {
   const [homeAddress, setHomeAddress] = useState('');
@@ -242,20 +243,20 @@ export default function OnboardingScreen({ accessToken, onComplete, onSignOut })
 
 const styles = StyleSheet.create({
   /* Light sheet so copy stays readable when App auth shell uses dark (signed-out) background */
-  flex: { flex: 1, backgroundColor: '#F1F5F9' },
+  flex: { flex: 1, backgroundColor: colors.canvasLight },
   scroll: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 40 },
   header: { marginBottom: 20 },
   logo: {
-    fontSize: 26,
+    fontSize: T.title,
     fontWeight: '700',
     color: '#0F172A',
     letterSpacing: -0.3,
   },
-  subtitle: { marginTop: 8, fontSize: 15, color: '#64748B' },
+  subtitle: { marginTop: space.sm, fontSize: T.bodyLg, color: '#64748B', lineHeight: 22 },
   card: {
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: radius.xl,
+    padding: space.xl,
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
@@ -295,8 +296,8 @@ const styles = StyleSheet.create({
   button: {
     marginTop: 22,
     backgroundColor: accent,
-    borderRadius: 12,
-    paddingVertical: 15,
+    borderRadius: radius.md,
+    paddingVertical: 16,
     alignItems: 'center',
     minHeight: 52,
     justifyContent: 'center',

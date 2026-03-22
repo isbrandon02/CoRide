@@ -28,24 +28,74 @@ import { ChatList, ChatThread } from './ChatTab';
 import GoalsScreen from './GoalsScreen';
 import ProfileSettingsScreen from './ProfileSettingsScreen';
 import RidesTab from './RidesTab';
-
-const C = {
-  bg: '#0a0a0f',
-  panel: '#111118',
-  card: '#18181f',
-  line: 'rgba(255,255,255,0.08)',
-  text: '#f0f0f5',
-  muted: 'rgba(240,240,245,0.62)',
-  faint: 'rgba(240,240,245,0.34)',
-  brand: '#00c896',
-  brandSoft: 'rgba(0,200,150,0.12)',
-  sky: '#4ea8f5',
-  amber: '#f5a623',
-};
+import { colors as C, type as T } from '../src/theme';
 
 const EMPTY_IMPACT = { saved: 0, co2: 0, rides: 0, weekly: [] };
 const MATCH_COLORS = [C.brand, C.amber, C.sky];
-const FILTERS = ['Morning', 'Afternoon', 'Evening'];
+
+/** Find tab: single-select sort (applied after search). */
+const FIND_SORT_DEPART = 'depart';
+const FIND_SORT_CO2 = 'co2';
+const FIND_SORT_SHARE = 'share';
+const FIND_SORT_RIDE = 'ride';
+const FIND_SORT_OPTIONS = [
+  { id: FIND_SORT_DEPART, label: 'Depart time' },
+  { id: FIND_SORT_CO2, label: 'CO₂ saved' },
+  { id: FIND_SORT_SHARE, label: 'Your share' },
+  { id: FIND_SORT_RIDE, label: 'Shortest ride' },
+];
+
+/** Minutes since midnight for commute depart; unknown times sort last. */
+function parseDepartMinutes(raw) {
+  if (raw == null) return Number.POSITIVE_INFINITY;
+  const s = String(raw).trim();
+  if (!s) return Number.POSITIVE_INFINITY;
+  const ampm = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)\s*$/i);
+  if (ampm) {
+    let h = parseInt(ampm[1], 10);
+    const min = parseInt(ampm[2], 10);
+    const ap = ampm[3].toLowerCase();
+    if (ap === 'pm' && h !== 12) h += 12;
+    if (ap === 'am' && h === 12) h = 0;
+    if (h > 23 || min > 59) return Number.POSITIVE_INFINITY;
+    return h * 60 + min;
+  }
+  const m24 = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (m24) {
+    const h = parseInt(m24[1], 10);
+    const min = parseInt(m24[2], 10);
+    if (h > 23 || min > 59) return Number.POSITIVE_INFINITY;
+    return h * 60 + min;
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+function sortFindMatches(matches, mode) {
+  const out = [...matches];
+  switch (mode) {
+    case FIND_SORT_DEPART:
+      out.sort((a, b) => parseDepartMinutes(a.time) - parseDepartMinutes(b.time));
+      break;
+    case FIND_SORT_CO2:
+      out.sort((a, b) => (b.co2 || 0) - (a.co2 || 0));
+      break;
+    case FIND_SORT_SHARE:
+      out.sort((a, b) => (a.cost || 0) - (b.cost || 0));
+      break;
+    case FIND_SORT_RIDE: {
+      out.sort((a, b) => {
+        const ea = a.eta || 0;
+        const eb = b.eta || 0;
+        if (ea !== eb) return ea - eb;
+        return (a.detour || 0) - (b.detour || 0);
+      });
+      break;
+    }
+    default:
+      break;
+  }
+  return out;
+}
 
 const TAB_BAR_ITEMS = [
   { key: 'home', label: 'Home', iconOn: 'home', iconOff: 'home-outline' },
@@ -186,7 +236,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
   const [findFocusId, setFindFocusId] = useState(null);
   /** When set, Activity → Upcoming highlights this driver (other_user id string); from Ride requested home widget. */
   const [ridesFocusOtherUserId, setRidesFocusOtherUserId] = useState(null);
-  const [filters, setFilters] = useState([]);
+  const [findSortMode, setFindSortMode] = useState(FIND_SORT_DEPART);
   const [homeProfileMenuOpen, setHomeProfileMenuOpen] = useState(false);
   /** Increment to tell Profile tab to enter edit mode (from Home menu). */
   const [profileEditSignal, setProfileEditSignal] = useState(0);
@@ -277,12 +327,19 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
     );
   }, [matches, search]);
 
+  const sortedShown = useMemo(
+    () => sortFindMatches(shown, findSortMode),
+    [shown, findSortMode],
+  );
+
   const displayedMatches = useMemo(() => {
-    if (!findFocusId) return shown;
+    if (!findFocusId) return sortedShown;
     const focus = matches.find((m) => m.id === findFocusId);
-    if (!focus || shown.some((m) => m.id === findFocusId)) return shown;
-    return [focus, ...shown.filter((m) => m.id !== findFocusId)];
-  }, [shown, matches, findFocusId]);
+    if (!focus || sortedShown.some((m) => m.id === findFocusId)) return sortedShown;
+    return [focus, ...sortedShown.filter((m) => m.id !== findFocusId)];
+  }, [sortedShown, matches, findFocusId]);
+
+  const topSortedMatchId = sortedShown[0]?.id ?? null;
 
   useEffect(() => {
     if (tab !== 'matches' || !findFocusId) return;
@@ -325,11 +382,6 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
     setRidesFocusOtherUserId(String(otherUserId));
     setTab('rides');
   }
-
-  const toggleFilter = useCallback(
-    (f) => setFilters((cur) => (cur.includes(f) ? cur.filter((x) => x !== f) : [...cur, f])),
-    [],
-  );
 
   const cancelPendingRide = useCallback(
     (driverIdStr) => {
@@ -418,9 +470,11 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
             <Text style={s.smallMuted}>{greet}</Text>
             <Text style={s.title}>{name}</Text>
             <Text style={s.sub}>
-              {matches.length === 0
-                ? 'No route matches yet — open Find when coworkers are onboarded'
-                : '3 coworkers from Two Sigma on your route today'}
+              {loadingMatches
+                ? 'Loading route matches…'
+                : matches.length === 0
+                  ? 'No route matches yet — open Find when coworkers are onboarded'
+                  : `${matches.length} coworker${matches.length === 1 ? '' : 's'} on your route today`}
             </Text>
           </View>
           <View style={s.homeHeaderActions}>
@@ -490,7 +544,12 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
       </AppPressable>
       <Text style={s.section}>Coworkers driving today</Text>
       {loadingMatches ? (
-        <ActivityIndicator color={C.brand} style={s.loader} />
+        <View style={s.skeletonBlock}>
+          <Text style={s.skeletonCaption}>Finding matches…</Text>
+          {[0, 1, 2].map((k) => (
+            <View key={k} style={s.skeletonRow} />
+          ))}
+        </View>
       ) : matches.length === 0 ? (
         <View style={s.card}>
           <Text style={s.rowTitle}>No matches yet</Text>
@@ -524,7 +583,11 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
       )}
       <Text style={s.section}>Your Impact</Text>
       {loadingImpact ? (
-        <ActivityIndicator color={C.brand} style={{ paddingVertical: 24 }} />
+        <View style={s.stats}>
+          {[0, 1, 2].map((k) => (
+            <View key={k} style={[s.stat, s.skeletonStat]} />
+          ))}
+        </View>
       ) : (
         <View style={s.stats}>
           <View style={s.stat}>
@@ -714,13 +777,13 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
         {tab === 'matches' && (
           <FindMatchesList
             displayedMatches={displayedMatches}
-            shown={shown}
+            topSortedMatchId={topSortedMatchId}
             loadingMatches={loadingMatches}
             findFocusId={findFocusId}
             search={search}
             setSearch={setSearch}
-            filters={filters}
-            toggleFilter={toggleFilter}
+            findSortMode={findSortMode}
+            setFindSortMode={setFindSortMode}
             pendingDriverIds={pendingDriverIds}
             cancellingDriverId={cancellingDriverId}
             onCancelPendingRide={cancelPendingRide}
@@ -808,6 +871,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
                 key={k}
                 variant="tab"
                 style={[s.tab, on && s.tabOn]}
+                hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: on }}
                 accessibilityLabel={l}
@@ -912,7 +976,7 @@ const s = StyleSheet.create({
     borderRadius: 12,
   },
   profileBackText: { color: C.text, fontSize: 17, fontWeight: '600' },
-  pad: { paddingBottom: 112 },
+  pad: { paddingBottom: 120 },
   homeHeaderRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1040,12 +1104,12 @@ const s = StyleSheet.create({
   },
   section: {
     color: C.faint,
-    fontSize: 11,
+    fontSize: T.caption,
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 1,
-    marginTop: 20,
-    marginBottom: 10,
+    marginTop: 26,
+    marginBottom: 12,
     paddingHorizontal: 20,
   },
   alert: {
@@ -1119,8 +1183,10 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.line,
     borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minHeight: 44,
+    justifyContent: 'center',
     overflow: 'hidden',
   },
   ghostBtnWide: {
@@ -1140,7 +1206,7 @@ const s = StyleSheet.create({
     gap: 10,
     marginHorizontal: 16,
     marginTop: 14,
-    marginBottom: 16,
+    marginBottom: 10,
     backgroundColor: C.card,
     borderWidth: 1,
     borderColor: C.line,
@@ -1150,31 +1216,90 @@ const s = StyleSheet.create({
   },
   searchLbl: { color: C.faint, fontSize: 12, fontWeight: '700' },
   input: { flex: 1, color: C.text, fontSize: 14, paddingVertical: 0 },
-  chips: { paddingHorizontal: 16, gap: 8, paddingTop: 10, paddingBottom: 4 },
-  chip: {
+  /** Find: sort card (aligned with search field) */
+  findSortCard: {
+    marginHorizontal: 16,
+    marginBottom: 18,
     backgroundColor: C.card,
     borderWidth: 1,
     borderColor: C.line,
-    borderRadius: 99,
+    borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingTop: 11,
+    paddingBottom: 12,
+  },
+  findSortLabel: {
+    color: C.faint,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  findSortChips: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    alignItems: 'center',
+    gap: 8,
+    paddingRight: 4,
+  },
+  chip: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 99,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
   },
   chipOn: { backgroundColor: C.brandSoft, borderColor: C.brand },
   chipText: { color: C.muted, fontSize: 12, fontWeight: '700' },
-  tip: {
-    marginHorizontal: 16,
-    marginTop: 10,
-    marginBottom: 12,
-    backgroundColor: C.brandSoft,
-    borderWidth: 1,
-    borderColor: C.brand,
-    borderRadius: 12,
-    paddingHorizontal: 13,
-    paddingVertical: 11,
-  },
-  tipText: { color: C.text, fontSize: 12.5 },
   center: { paddingVertical: 40, alignItems: 'center' },
   loader: { paddingVertical: 24 },
+  skeletonBlock: {
+    marginTop: 4,
+    paddingBottom: 8,
+  },
+  skeletonCaption: {
+    color: C.faint,
+    fontSize: T.bodyMd,
+    fontWeight: '600',
+    paddingHorizontal: 20,
+    marginBottom: 14,
+  },
+  skeletonRow: {
+    height: 72,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: C.line,
+  },
+  skeletonStat: {
+    minHeight: 88,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  findSkeletonWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 32,
+  },
+  findSkeletonCaption: {
+    color: C.muted,
+    fontSize: T.bodyMd,
+    textAlign: 'center',
+    marginBottom: 18,
+    lineHeight: 20,
+  },
+  skeletonMatchCard: {
+    height: 260,
+    marginBottom: 14,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: C.line,
+  },
   match: {
     marginHorizontal: 16,
     marginBottom: 12,
@@ -1194,16 +1319,15 @@ const s = StyleSheet.create({
   matchEmail: { color: C.faint, fontSize: 11, marginTop: 4 },
   score: { color: C.brand, fontSize: 28, fontWeight: '800' },
   scoreLbl: { color: C.faint, fontSize: 10, textTransform: 'uppercase', fontWeight: '700' },
-  metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  metrics: { marginTop: 12, gap: 8 },
+  metricsRow: { flexDirection: 'row', gap: 8 },
   metric: {
-    flexGrow: 1,
-    flexBasis: '30%',
-    minWidth: '28%',
-    maxWidth: '33%',
+    flex: 1,
+    minWidth: 0,
     backgroundColor: 'rgba(255,255,255,0.04)',
     borderRadius: 11,
     paddingVertical: 10,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     alignItems: 'center',
   },
   metricNum: { color: C.text, fontSize: 13, fontWeight: '800', textAlign: 'center' },
@@ -1215,6 +1339,8 @@ const s = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
   },
+  metricNumEmphasis: { fontSize: 18, letterSpacing: -0.3 },
+  metricKeyEmphasis: { fontSize: 10, marginTop: 6 },
   actions: { flexDirection: 'row', gap: 8, marginTop: 14 },
   primary: {
     flex: 1,
@@ -1252,9 +1378,15 @@ const s = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 16,
     paddingHorizontal: 20,
+    minHeight: 52,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'stretch',
+    shadowColor: C.brand,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    elevation: 5,
   },
   sheetConfirmText: {
     color: '#FFFFFF',
@@ -1295,10 +1427,17 @@ const s = StyleSheet.create({
     borderTopColor: C.line,
     paddingTop: 10,
   },
-  tab: { borderRadius: 14, paddingHorizontal: 6, paddingVertical: 6, minWidth: 56 },
+  tab: {
+    borderRadius: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    minWidth: 56,
+    minHeight: 48,
+    justifyContent: 'center',
+  },
   tabOn: { backgroundColor: C.brandSoft },
-  tabInner: { alignItems: 'center', justifyContent: 'center', gap: 3 },
-  tabText: { color: C.faint, fontSize: 10, fontWeight: '700' },
+  tabInner: { alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 40 },
+  tabText: { color: C.faint, fontSize: T.caption, fontWeight: '700' },
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
     backgroundColor: C.panel,
@@ -1338,13 +1477,13 @@ const FIND_FOCUS_SCROLL_BACK_PX = 128;
 /** Stable screen (not defined inside MainApp) so React does not remount Find on every parent render. */
 function FindMatchesList({
   displayedMatches,
-  shown,
+  topSortedMatchId,
   loadingMatches,
   findFocusId,
   search,
   setSearch,
-  filters,
-  toggleFilter,
+  findSortMode,
+  setFindSortMode,
   pendingDriverIds,
   cancellingDriverId,
   onCancelPendingRide,
@@ -1404,46 +1543,52 @@ function FindMatchesList({
             style={s.input}
           />
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
-          {FILTERS.map((f) => {
-            const on = filters.includes(f);
-            return (
-              <AppPressable
-                key={f}
-                variant="chip"
-                style={[s.chip, on && s.chipOn]}
-                onPress={() => toggleFilter(f)}
-              >
-                <Text style={[s.chipText, on && { color: C.brand }]}>{f}</Text>
-              </AppPressable>
-            );
-          })}
-        </ScrollView>
-        <View style={s.tip}>
-          <Text style={s.tipText}>Score = route overlap x 0.6 + time proximity x 0.4</Text>
+        <View style={s.findSortCard}>
+          <Text style={s.findSortLabel}>Sort by</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={s.findSortChips}
+          >
+            {FIND_SORT_OPTIONS.map((opt) => {
+              const on = findSortMode === opt.id;
+              return (
+                <AppPressable
+                  key={opt.id}
+                  variant="chip"
+                  style={[s.chip, on && s.chipOn]}
+                  onPress={() => setFindSortMode(opt.id)}
+                >
+                  <Text style={[s.chipText, on && { color: C.brand }]}>{opt.label}</Text>
+                </AppPressable>
+              );
+            })}
+          </ScrollView>
         </View>
         {loadingMatches ? (
-          <View style={s.center}>
-            <ActivityIndicator size="large" color={C.brand} />
-            <Text style={s.sub}>Finding your best commute matches...</Text>
+          <View style={s.findSkeletonWrap}>
+            <Text style={s.findSkeletonCaption}>Finding your best commute matches…</Text>
+            {[0, 1].map((k) => (
+              <View key={k} style={s.skeletonMatchCard} />
+            ))}
           </View>
         ) : displayedMatches.length === 0 ? (
           <View style={s.card}>
-            <Text style={s.rowTitle}>No matches for these filters yet</Text>
-            <Text style={s.rowSub}>Try removing a filter or search by another neighborhood.</Text>
+            <Text style={s.rowTitle}>No matches for your search</Text>
+            <Text style={s.rowSub}>Try another name, area, or sort option.</Text>
           </View>
         ) : null}
       </View>
     ),
-    [loadingMatches, displayedMatches.length, search, filters, toggleFilter, setSearch],
+    [loadingMatches, displayedMatches.length, search, findSortMode, setFindSortMode, setSearch],
   );
 
   const renderItem = useCallback(
-    ({ item: m, index: i }) => {
+    ({ item: m }) => {
       const done = pendingDriverIds.includes(m.id);
       const cancelBusy = cancellingDriverId === m.id;
       const focused = findFocusId === m.id;
-      const isTopMatch = m.id === shown[0]?.id;
+      const isTopMatch = m.id === topSortedMatchId;
       return (
         <View style={[s.match, isTopMatch && !focused && { borderColor: C.brand }, focused && s.matchFocused]}>
           <View style={s.between}>
@@ -1467,33 +1612,35 @@ function FindMatchesList({
             </View>
           </View>
           <View style={s.metrics}>
-            <View style={s.metric}>
-              <Text style={s.metricNum}>{m.time || '—'}</Text>
-              <Text style={s.metricKey}>Departs</Text>
+            <View style={s.metricsRow}>
+              <View style={s.metric}>
+                <Text style={s.metricNum}>{m.time || '—'}</Text>
+                <Text style={s.metricKey}>Departs</Text>
+              </View>
+              <View style={s.metric}>
+                <Text style={s.metricNum}>{m.eta != null && m.eta > 0 ? `${m.eta} min` : '—'}</Text>
+                <Text style={s.metricKey}>Est. ride</Text>
+              </View>
+              <View style={s.metric}>
+                <Text style={[s.metricNum, { color: C.text }]}>
+                  {m.totalDriveMiles > 0 ? `${m.totalDriveMiles.toFixed(1)} mi` : '—'}
+                </Text>
+                <Text style={s.metricKey}>Trip w/ stop</Text>
+              </View>
             </View>
-            <View style={s.metric}>
-              <Text style={s.metricNum}>{m.eta != null && m.eta > 0 ? `${m.eta} min` : '—'}</Text>
-              <Text style={s.metricKey}>Est. ride</Text>
-            </View>
-            <View style={s.metric}>
-              <Text style={[s.metricNum, { color: C.text }]}>
-                {m.totalDriveMiles > 0 ? `${m.totalDriveMiles.toFixed(1)} mi` : '—'}
-              </Text>
-              <Text style={s.metricKey}>Trip w/ stop</Text>
-            </View>
-            <View style={s.metric}>
-              <Text style={[s.metricNum, { color: i === 1 ? C.amber : C.brand }]}>
-                +{Number(m.detour ?? 0)} min
-              </Text>
-              <Text style={s.metricKey}>Detour</Text>
-            </View>
-            <View style={s.metric}>
-              <Text style={[s.metricNum, { color: C.brand }]}>${Number(m.cost ?? 0).toFixed(2)}</Text>
-              <Text style={s.metricKey}>Your share</Text>
-            </View>
-            <View style={s.metric}>
-              <Text style={[s.metricNum, { color: C.sky }]}>{Number(m.co2 ?? 0).toFixed(1)}kg</Text>
-              <Text style={s.metricKey}>CO₂ saved</Text>
+            <View style={s.metricsRow}>
+              <View style={[s.metric, { paddingVertical: 12 }]}>
+                <Text style={[s.metricNum, s.metricNumEmphasis, { color: C.brand }]}>
+                  ${Number(m.cost ?? 0).toFixed(2)}
+                </Text>
+                <Text style={[s.metricKey, s.metricKeyEmphasis]}>Your share</Text>
+              </View>
+              <View style={[s.metric, { paddingVertical: 12 }]}>
+                <Text style={[s.metricNum, s.metricNumEmphasis, { color: C.sky }]}>
+                  {Number(m.co2 ?? 0).toFixed(1)}kg
+                </Text>
+                <Text style={[s.metricKey, s.metricKeyEmphasis]}>CO₂ saved</Text>
+              </View>
             </View>
           </View>
           <View style={s.actions}>
@@ -1527,7 +1674,7 @@ function FindMatchesList({
     },
     [
       findFocusId,
-      shown,
+      topSortedMatchId,
       pendingDriverIds,
       cancellingDriverId,
       onCancelPendingRide,
@@ -1543,7 +1690,7 @@ function FindMatchesList({
       style={{ flex: 1 }}
       data={listData}
       keyExtractor={(item) => item.id}
-      extraData={`${findFocusId}-${pendingDriverIds.join(',')}-${cancellingDriverId ?? ''}`}
+      extraData={`${findSortMode}-${findFocusId}-${pendingDriverIds.join(',')}-${cancellingDriverId ?? ''}`}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
       ListHeaderComponent={listHeader}
