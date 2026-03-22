@@ -6,7 +6,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import Base, engine, migrate_sqlite_schema
-from app.demo_seed import apply_demo_profile_photos, seed_demo_accounts, seed_demo_chats, seed_demo_rides
+from app.demo_seed import (
+    apply_demo_profile_photos,
+    ensure_sample_rides_for_users_without_rides,
+    ensure_upcoming_week_sample_rides,
+    seed_demo_accounts,
+    seed_demo_chats,
+    seed_demo_rides,
+)
 from app.routers import auth, chats, impact, matches, profile, rides
 
 logger = logging.getLogger(__name__)
@@ -26,6 +33,12 @@ async def lifespan(_app: FastAPI):
         ride_n, _ = seed_demo_rides()
         if ride_n:
             logger.info("Startup demo ride seed: %s ride(s) added", ride_n)
+        extra_n = ensure_sample_rides_for_users_without_rides()
+        if extra_n:
+            logger.info("Startup sample rides for empty accounts: %s ride(s) added", extra_n)
+        up_n = ensure_upcoming_week_sample_rides()
+        if up_n:
+            logger.info("Startup upcoming-week sample rides: %s ride(s) added", up_n)
         chat_n, _ = seed_demo_chats()
         if chat_n:
             logger.info("Startup demo chat seed: %s message(s) added", chat_n)

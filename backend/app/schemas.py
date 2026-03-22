@@ -96,6 +96,16 @@ class MatchItemOut(BaseModel):
     commute_route: str = ""
     work_schedule: WorkScheduleOut = Field(default_factory=WorkScheduleOut)
     vehicle: VehicleOut = Field(default_factory=VehicleOut)
+    # Heuristic trip economics (deterministic per pair; aligns with overlap / time scores).
+    detour_minutes: int = Field(default=0, ge=0, description="Extra minutes for pickup vs direct commute")
+    total_drive_miles: float = Field(
+        default=0.0,
+        ge=0,
+        description="One-way miles for the full carpool including pickup stop",
+    )
+    co2_saved_kg: float = Field(default=0.0, ge=0)
+    share_usd: float = Field(default=0.0, ge=0)
+    eta_minutes: int = Field(default=0, ge=0, description="Rough pickup-to-work ETA")
 
 
 class MatchesResponse(BaseModel):

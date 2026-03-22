@@ -51,14 +51,27 @@ function shortAddr(s) {
   return first.length > 32 ? `${first.slice(0, 30)}…` : first;
 }
 
+function formatMatchVehicleLabel(vehicle) {
+  if (!vehicle || typeof vehicle !== 'object') return '';
+  const make = String(vehicle.make ?? '').trim();
+  const model = String(vehicle.model ?? '').trim();
+  const year = vehicle.year != null && vehicle.year !== '' ? String(vehicle.year) : '';
+  const color = String(vehicle.color ?? '').trim();
+  if (!make && !model) return '';
+  const name = [make, model].filter(Boolean).join(' ');
+  const lead = year ? `${year} ${name}` : name;
+  return color ? `${lead} · ${color}` : lead;
+}
+
 function matchDetailLine(m) {
   const start = m.work_schedule?.start_time;
   const bits = [];
-  if (start) bits.push(start);
-  bits.push(`${Math.round(m.match_score)}% match`);
-  bits.push(`route ${Math.round(m.route_overlap)}%`);
-  if (m.office_address) bits.push(shortAddr(m.office_address));
-  return bits.join(' · ');
+  if (start) bits.push(`~${start} depart`);
+  const office = shortAddr(m.office_address);
+  if (office) bits.push(office);
+  const car = formatMatchVehicleLabel(m.vehicle);
+  if (car) bits.push(car);
+  return bits.join(' · ') || 'Tap for details';
 }
 
 function greetingLine() {
@@ -170,11 +183,6 @@ export default function HomeScreen({
                   <View style={{ flex: 1 }}>
                     <Text style={styles.rankName}>{m.name}</Text>
                     <Text style={styles.rankMeta}>{matchDetailLine(m)}</Text>
-                    <View style={styles.scoreRow}>
-                      <Text style={styles.scoreChip}>Score {Math.round(m.match_score)}%</Text>
-                      <Text style={styles.scoreMuted}>Route {Math.round(m.route_overlap)}%</Text>
-                      <Text style={styles.scoreMuted}>Time {Math.round(m.time_score)}%</Text>
-                    </View>
                   </View>
                 </View>
               ))}
@@ -233,32 +241,12 @@ export default function HomeScreen({
               <Text style={styles.featuredTitle}>
                 {topMatch ? `Ride with ${topMatch.name}` : 'Find your best carpool'}
               </Text>
-              <Text style={styles.featuredMeta} numberOfLines={3}>
+              <Text style={styles.featuredMeta} numberOfLines={4}>
                 {topMatch
                   ? `${matchDetailLine(topMatch)}`
                   : matchesError || 'Complete your home, office, and schedule to see ranked matches.'}
               </Text>
-              <View style={styles.pillRow}>
-                <View style={styles.pill}>
-                  <Text style={styles.pillText}>
-                    {topMatch ? `${Math.round(topMatch.match_score)}% match` : '—'}
-                  </Text>
-                </View>
-                <View style={styles.pill}>
-                  <Text style={styles.pillText}>
-                    {topMatch ? `Route ${Math.round(topMatch.route_overlap)}%` : 'Route'}
-                  </Text>
-                </View>
-                <View style={styles.pill}>
-                  <Text style={styles.pillText}>
-                    {topMatch ? `Time ${Math.round(topMatch.time_score)}%` : 'Time'}
-                  </Text>
-                </View>
-              </View>
             </View>
-            <Text style={styles.carGlyph} accessibilityLabel="">
-              🚗
-            </Text>
           </View>
         </View>
 
@@ -452,27 +440,8 @@ const styles = StyleSheet.create({
   featuredMeta: {
     fontSize: 14,
     color: 'rgba(15, 23, 42, 0.75)',
-    marginBottom: 14,
-  },
-  pillRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  pill: {
-    backgroundColor: 'rgba(15, 23, 42, 0.2)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  pillText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#0F172A',
-  },
-  carGlyph: {
-    fontSize: 44,
-    opacity: 0.85,
+    lineHeight: 20,
+    marginBottom: 0,
   },
   statsRow: {
     flexDirection: 'row',
@@ -709,21 +678,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: muted,
     lineHeight: 18,
-  },
-  scoreRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 8,
-  },
-  scoreChip: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: green,
-  },
-  scoreMuted: {
-    fontSize: 12,
-    color: label,
   },
   listEmpty: {
     paddingVertical: 16,

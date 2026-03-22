@@ -32,7 +32,7 @@ const errBorder = '#7F1D1D';
 const errText = '#FCA5A5';
 const DAY_OPTIONS = ['Sat', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sun'];
 const GENDER_OPTIONS = ['Male', 'Female', 'Other', 'Prefer not to Identify'];
-const STATUS_OPTIONS = ['Rider', 'Driver', 'Flexible commuter', 'Carpool host'];
+const STATUS_OPTIONS = ['Rider', 'Driver', 'Flexible commuter'];
 const TIME_OPTIONS = Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, '0')}:00`);
 
 function parseWorkDays(value) {
@@ -78,7 +78,9 @@ function displayGenderFromProfile(profile) {
 }
 
 function displayStatusFromProfile(profile) {
-  return String(profile?.status ?? '').trim();
+  const s = String(profile?.status ?? '').trim();
+  if (s === 'Carpool host') return 'Flexible commuter';
+  return s;
 }
 
 function ProfileHeroFace({ email, avatarUrl }) {

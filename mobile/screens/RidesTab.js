@@ -212,10 +212,17 @@ function Avatar({ initials, color, size = 40 }) {
 const SUB_KEYS = [
   { key: 'up', label: 'Upcoming' },
   { key: 'past', label: 'History' },
-  { key: 'drv', label: 'Driving' },
 ];
 
-export default function RidesTab({ accessToken, bottomPadding, onPressFind, refreshKey = 0, onRidesMutated }) {
+export default function RidesTab({
+  accessToken,
+  bottomPadding,
+  onPressFind,
+  refreshKey = 0,
+  onRidesMutated,
+  /** Other party's user id (string) to pin to top of Upcoming and highlight (e.g. from home Ride requested). */
+  focusOtherUserId = null,
+}) {
   const [sub, setSub] = useState('up');
   const [rides, setRides] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -246,6 +253,10 @@ export default function RidesTab({ accessToken, bottomPadding, onPressFind, refr
     };
   }, [accessToken, refreshKey]);
 
+  useEffect(() => {
+    if (focusOtherUserId) setSub('up');
+  }, [focusOtherUserId]);
+
   const { upcoming, history, driving } = useMemo(() => {
     const list = rides ?? [];
     const historyList = list.filter(
@@ -260,6 +271,24 @@ export default function RidesTab({ accessToken, bottomPadding, onPressFind, refr
     });
     return { upcoming: upcomingList, history: historyList, driving: drivingList };
   }, [rides]);
+
+  const orderedUpcoming = useMemo(() => {
+    if (!focusOtherUserId) return upcoming;
+    const idx = upcoming.findIndex((r) => String(r.other_user?.id) === focusOtherUserId);
+    if (idx <= 0) return upcoming;
+    const next = [...upcoming];
+    const [hit] = next.splice(idx, 1);
+    return [hit, ...next];
+  }, [upcoming, focusOtherUserId]);
+
+  const orderedDriving = useMemo(() => {
+    if (!focusOtherUserId) return driving;
+    const idx = driving.findIndex((r) => String(r.other_user?.id) === focusOtherUserId);
+    if (idx <= 0) return driving;
+    const next = [...driving];
+    const [hit] = next.splice(idx, 1);
+    return [hit, ...next];
+  }, [driving, focusOtherUserId]);
 
   async function respondToRequest(rideId, status) {
     if (!accessToken) return;
@@ -294,18 +323,16 @@ export default function RidesTab({ accessToken, bottomPadding, onPressFind, refr
       <View style={styles.head}>
         <View>
           <Text style={styles.title}>Activity</Text>
-          <Text style={styles.sub}>Your requests · rides with you as driver</Text>
+          <Text style={styles.sub}>Approve incoming asks · Your rides</Text>
         </View>
       </View>
 
       <View style={styles.tabRow}>
         {SUB_KEYS.map((t) => {
           const on = sub === t.key;
-          const label =
-            t.key === 'drv' && driving.length > 0 ? `Driving (${driving.length})` : t.label;
           return (
             <AppPressable key={t.key} variant="tab" style={styles.tabCell} onPress={() => setSub(t.key)}>
-              <Text style={[styles.tabTxt, on && { color: C.brand }]}>{label}</Text>
+              <Text style={[styles.tabTxt, on && { color: C.brand }]}>{t.label}</Text>
               {on ? <View style={styles.tabUnd} /> : null}
             </AppPressable>
           );
@@ -321,16 +348,94 @@ export default function RidesTab({ accessToken, bottomPadding, onPressFind, refr
               <Text style={styles.emptyTitle}>Could not load rides</Text>
               <Text style={styles.emptySub}>{error}</Text>
             </View>
-          ) : upcoming.length === 0 ? (
+          ) : driving.length === 0 && orderedUpcoming.length === 0 ? (
             <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No upcoming rides</Text>
-              <Text style={styles.emptySub}>Request a ride from Find to see it here.</Text>
+              <Text style={styles.emptyTitle}>Nothing upcoming</Text>
+              <Text style={styles.emptySub}>
+                When coworkers request a ride with you, it appears up top here. Your own requests show below that.
+              </Text>
               <AppPressable variant="primary" style={styles.primary} onPress={onPressFind}>
                 <Text style={styles.primaryTxt}>Find a ride</Text>
               </AppPressable>
             </View>
           ) : (
-            upcoming.map((ride) => {
+            <>
+              {driving.length > 0 ? (
+                <>
+                  <View style={styles.sectionHeadRow}>
+                    <Text style={styles.sectionEyebrow}>Needs your response</Text>
+                    {driving.length > 1 ? (
+                      <View style={styles.sectionCountPill}>
+                        <Text style={styles.sectionCountTxt}>{driving.length}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={styles.sectionHint}>
+                    They chose you on Find — accept or decline so they know what to expect.
+                  </Text>
+                  {orderedDriving.map((ride) => {
+                    const other = ride.other_user;
+                    const ini = initialsFromName(other.name);
+                    const busy = actingId === ride.id;
+                    const isFocused =
+                      !!focusOtherUserId && String(other?.id) === String(focusOtherUserId);
+                    return (
+                      <View
+                        key={`in-${ride.id}`}
+                        style={[
+                          styles.rcard,
+                          styles.incomingCard,
+                          isFocused && styles.rcardFocused,
+                        ]}
+                        accessibilityState={isFocused ? { selected: true } : undefined}
+                      >
+                        <View style={styles.rcHead}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.rcTimeSm}>{other.name}</Text>
+                            <Text style={styles.rcDate}>{formatRideWhen(ride.created_at)}</Text>
+                          </View>
+                          <Badge label="Wants a ride" tone="amber" />
+                        </View>
+                        <Text style={[styles.rcDate, { marginTop: 2 }]}>{other.email}</Text>
+                        <View style={styles.drvRow}>
+                          <Avatar initials={ini} color={C.sky} size={40} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.drvName}>Requester</Text>
+                            <Text style={styles.drvVeh} numberOfLines={2}>
+                              {ride.note ? ride.note : 'No note'}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={styles.drvActions}>
+                          <Pressable
+                            style={[styles.acceptBtn, busy && { opacity: 0.5 }]}
+                            disabled={busy}
+                            onPress={() => respondToRequest(ride.id, 'accepted')}
+                          >
+                            <Text style={styles.acceptBtnTxt}>Accept</Text>
+                          </Pressable>
+                          <Pressable
+                            style={[styles.declineBtn, busy && { opacity: 0.5 }]}
+                            disabled={busy}
+                            onPress={() => respondToRequest(ride.id, 'declined')}
+                          >
+                            <Text style={styles.declineBtnTxt}>Decline</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </>
+              ) : null}
+
+              {driving.length > 0 && orderedUpcoming.length > 0 ? (
+                <View style={styles.sectionSpacer}>
+                  <View style={styles.sectionRule} />
+                  <Text style={styles.sectionEyebrowSecondary}>Your upcoming</Text>
+                </View>
+              ) : null}
+
+              {orderedUpcoming.map((ride) => {
               const other = ride.other_user;
               const ini = initialsFromName(other.name);
               const statusLabel =
@@ -344,8 +449,14 @@ export default function RidesTab({ accessToken, bottomPadding, onPressFind, refr
                 ride.role === 'requester'
                   ? `You asked ${other.name} for a ride`
                   : `${other.name} asked you for a ride`;
+              const isFocused =
+                !!focusOtherUserId && String(other?.id) === String(focusOtherUserId);
               return (
-                <View key={ride.id} style={styles.rcard}>
+                <View
+                  key={ride.id}
+                  style={[styles.rcard, isFocused && styles.rcardFocused]}
+                  accessibilityState={isFocused ? { selected: true } : undefined}
+                >
                   <View style={styles.rcHead}>
                     <View style={{ flex: 1, paddingRight: 8 }}>
                       <Text style={styles.rcTimeSm}>{headline}</Text>
@@ -394,7 +505,8 @@ export default function RidesTab({ accessToken, bottomPadding, onPressFind, refr
                   ) : null}
                 </View>
               );
-            })
+            })}
+            </>
           )}
         </>
       )}
@@ -451,63 +563,6 @@ export default function RidesTab({ accessToken, bottomPadding, onPressFind, refr
         </>
       )}
 
-      {sub === 'drv' && (
-        <>
-          <View style={styles.banner}>
-            <Text style={styles.bannerTxt}>
-              Incoming requests from coworkers who chose you on Find. Accept to confirm the carpool. Either of
-              you can mark it complete afterward — that adds savings and emissions to both your Impact totals.
-            </Text>
-          </View>
-          {loading ? (
-            <ActivityIndicator color={C.brand} style={{ marginTop: 28 }} />
-          ) : driving.length === 0 ? (
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No pending requests</Text>
-              <Text style={styles.emptySub}>When someone requests a ride with you, it will show here.</Text>
-            </View>
-          ) : (
-            driving.map((ride) => {
-              const other = ride.other_user;
-              const ini = initialsFromName(other.name);
-              const busy = actingId === ride.id;
-              return (
-                <View key={ride.id} style={styles.rcard}>
-                  <View style={styles.rcHead}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.rcTimeSm}>{other.name}</Text>
-                      <Text style={styles.rcDate}>{formatRideWhen(ride.created_at)}</Text>
-                    </View>
-                    <Badge label="Requested" tone="amber" />
-                  </View>
-                  <Text style={styles.rcDate}>{other.email}</Text>
-                  <View style={styles.pips}>
-                    <View style={[styles.pip, { backgroundColor: C.sky }]}>
-                      <Text style={styles.pipTxt}>{ini}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.drvActions}>
-                    <Pressable
-                      style={[styles.acceptBtn, busy && { opacity: 0.5 }]}
-                      disabled={busy}
-                      onPress={() => respondToRequest(ride.id, 'accepted')}
-                    >
-                      <Text style={styles.acceptBtnTxt}>Accept</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.declineBtn, busy && { opacity: 0.5 }]}
-                      disabled={busy}
-                      onPress={() => respondToRequest(ride.id, 'declined')}
-                    >
-                      <Text style={styles.declineBtnTxt}>Decline</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              );
-            })
-          )}
-        </>
-      )}
     </ScrollView>
   );
 }
@@ -534,6 +589,49 @@ const styles = StyleSheet.create({
   tabCell: { paddingVertical: 10, paddingHorizontal: 12, marginRight: 4 },
   tabTxt: { fontSize: 13, fontWeight: '600', color: C.faint },
   tabUnd: { height: 2, backgroundColor: C.brand, borderRadius: 2, marginTop: 8, marginHorizontal: -4 },
+  sectionHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 20,
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  sectionEyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+    color: C.faint,
+    textTransform: 'uppercase',
+  },
+  sectionEyebrowSecondary: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+    color: C.faint,
+    textTransform: 'uppercase',
+    marginTop: 4,
+  },
+  sectionCountPill: {
+    backgroundColor: 'rgba(245,166,35,0.18)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  sectionCountTxt: { fontSize: 11, fontWeight: '800', color: C.amber },
+  sectionHint: {
+    marginHorizontal: 20,
+    marginBottom: 14,
+    fontSize: 13,
+    color: C.muted,
+    lineHeight: 19,
+  },
+  sectionSpacer: { marginHorizontal: 20, marginTop: 10, marginBottom: 6 },
+  sectionRule: { height: StyleSheet.hairlineWidth, backgroundColor: C.line, marginBottom: 12 },
+  incomingCard: {
+    borderLeftWidth: 3,
+    borderLeftColor: C.amber,
+  },
   rcard: {
     marginHorizontal: 16,
     marginBottom: 12,
@@ -542,6 +640,11 @@ const styles = StyleSheet.create({
     borderColor: C.line,
     borderRadius: 22,
     padding: 18,
+  },
+  rcardFocused: {
+    borderWidth: 2,
+    borderColor: C.brand,
+    backgroundColor: 'rgba(0,200,150,0.07)',
   },
   rcHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   rcTime: { fontSize: 30, fontWeight: '800', color: C.text, letterSpacing: -0.5 },
@@ -684,16 +787,6 @@ const styles = StyleSheet.create({
   },
   histTitle: { fontSize: 14, fontWeight: '600', color: C.text },
   histSub: { fontSize: 12, color: C.muted, marginTop: 2 },
-  banner: {
-    marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 12,
-    borderRadius: 16,
-    backgroundColor: C.brandSoft,
-    borderWidth: 1,
-    borderColor: C.brand,
-  },
-  bannerTxt: { fontSize: 13, color: C.brand, lineHeight: 19 },
   drvActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
   acceptBtn: {
     flex: 1,
@@ -713,18 +806,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   declineBtnTxt: { color: C.text, fontSize: 14, fontWeight: '700' },
-  pips: { flexDirection: 'row', marginTop: 10 },
-  pip: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: -6,
-    borderWidth: 2,
-    borderColor: C.panel,
-  },
-  pipTxt: { fontSize: 10, fontWeight: '800', color: '#fff' },
   empty: { marginHorizontal: 20, marginTop: 24, padding: 20, borderRadius: 18, backgroundColor: C.card, borderWidth: 1, borderColor: C.line },
   emptyTitle: { fontSize: 16, fontWeight: '700', color: C.text },
   emptySub: { fontSize: 13, color: C.muted, marginTop: 6, lineHeight: 19 },

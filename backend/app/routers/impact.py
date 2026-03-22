@@ -33,6 +33,7 @@ def get_impact(
     for i in range(6, -1, -1):
         day = today - timedelta(days=i)
         day_total = 0.0
+        ride_count = 0
         for r in completed:
             ref = r.completed_at or r.created_at
             if ref is None:
@@ -41,7 +42,15 @@ def get_impact(
                 ref = ref.replace(tzinfo=timezone.utc)
             if ref.date() == day:
                 day_total += float(r.saved_usd or 0)
-        weekly.append({"d": day.strftime("%a"), "v": round(day_total, 2)})
+                ride_count += 1
+        weekly.append(
+            {
+                "d": day.strftime("%a"),
+                "label": day.strftime("%b %d"),
+                "v": round(day_total, 2),
+                "rides": ride_count,
+            }
+        )
 
     return ImpactResponse(
         total_saved=round(total_saved, 2),

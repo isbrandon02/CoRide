@@ -88,6 +88,19 @@ function firstLineAddress(addr) {
   return line.length > 36 ? `${line.slice(0, 34)}…` : line;
 }
 
+/** Human-readable car line from API `vehicle` on match items. */
+function formatMatchVehicleLabel(vehicle) {
+  if (!vehicle || typeof vehicle !== 'object') return '';
+  const make = String(vehicle.make ?? '').trim();
+  const model = String(vehicle.model ?? '').trim();
+  const year = vehicle.year != null && vehicle.year !== '' ? String(vehicle.year) : '';
+  const color = String(vehicle.color ?? '').trim();
+  if (!make && !model) return '';
+  const name = [make, model].filter(Boolean).join(' ');
+  const lead = year ? `${year} ${name}` : name;
+  return color ? `${lead} · ${color}` : lead;
+}
+
 function normalizeMatch(x, i) {
   const displayName = x.name ?? x.full_name ?? 'Member';
   const score = x.score ?? x.match_score ?? 0;
@@ -121,10 +134,12 @@ function normalizeMatch(x, i) {
     seats: x.seats != null ? x.seats : 2,
     role: x.role ?? 'Carpool',
     team: x.team ?? 'match',
-    eta: Number(x.eta ?? 0) || 0,
-    detour: Number(x.detour ?? 0) || 0,
-    cost: Number(x.cost ?? x.share ?? 0) || 0,
-    co2: Number(x.co2 ?? x.co2_kg ?? 0) || 0,
+    eta: Number(x.eta_minutes ?? x.eta ?? 0) || 0,
+    detour: Number(x.detour_minutes ?? x.detour ?? 0) || 0,
+    totalDriveMiles: Number(x.total_drive_miles ?? x.totalDriveMiles ?? 0) || 0,
+    cost: Number(x.share_usd ?? x.cost ?? x.share ?? 0) || 0,
+    co2: Number(x.co2_saved_kg ?? x.co2 ?? x.co2_kg ?? 0) || 0,
+    vehicleLabel: formatMatchVehicleLabel(x.vehicle),
   };
 }
 
@@ -153,10 +168,14 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
   const [chatRefreshKey, setChatRefreshKey] = useState(0);
   /** When set, Find tab scrolls to this match and highlights it (e.g. from Home). */
   const [findFocusId, setFindFocusId] = useState(null);
+  /** When set, Activity → Upcoming highlights this driver (other_user id string); from Ride requested home widget. */
+  const [ridesFocusOtherUserId, setRidesFocusOtherUserId] = useState(null);
   const [filters, setFilters] = useState([]);
   const [homeProfileMenuOpen, setHomeProfileMenuOpen] = useState(false);
   /** Increment to tell Profile tab to enter edit mode (from Home menu). */
   const [profileEditSignal, setProfileEditSignal] = useState(0);
+  const [homeRides, setHomeRides] = useState([]);
+  const [notifOpen, setNotifOpen] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -175,7 +194,9 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
         if (!live) return;
         const list = matchData.matches ?? [];
         setMatches(Array.isArray(list) ? list.map(normalizeMatch) : []);
-        const pendingRides = (ridesData.rides ?? []).filter(
+        const ridesList = ridesData.rides ?? [];
+        setHomeRides(Array.isArray(ridesList) ? ridesList : []);
+        const pendingRides = ridesList.filter(
           (r) => r.role === 'requester' && r.status === 'pending',
         );
         setPendingDriverIds(pendingRides.map((r) => String(r.other_user.id)));
@@ -184,6 +205,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
         );
       } catch {
         setMatches([]);
+        setHomeRides([]);
       } finally {
         if (live) setLoadingMatches(false);
       }
@@ -211,7 +233,12 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
           rides: Number(d.rides_shared ?? d.total_rides ?? 0),
           weekly:
             Array.isArray(d.weekly) && d.weekly.length
-              ? d.weekly.map((x) => ({ d: x.day ?? x.d, v: x.value ?? x.v }))
+              ? d.weekly.map((x) => ({
+                  d: x.day ?? x.d,
+                  v: x.value ?? x.v,
+                  label: x.label ?? x.date ?? '',
+                  rides: Number(x.rides ?? x.n ?? 0),
+                }))
               : [],
         });
       })
@@ -247,8 +274,41 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
     return () => clearTimeout(t);
   }, [tab, findFocusId]);
 
+  useEffect(() => {
+    if (tab !== 'rides') {
+      setRidesFocusOtherUserId(null);
+      return;
+    }
+    if (!ridesFocusOtherUserId) return;
+    const t = setTimeout(() => setRidesFocusOtherUserId(null), 5000);
+    return () => clearTimeout(t);
+  }, [tab, ridesFocusOtherUserId]);
+
   const top = shown[0] ?? matches[0];
   const commute = pendingDriverIds.length ? matches.find((m) => pendingDriverIds.includes(m.id)) ?? top : top;
+
+  const rideNotifications = useMemo(() => {
+    const list = homeRides ?? [];
+    const incomingAsDriver = list.filter((r) => r.role === 'driver' && r.status === 'pending');
+    const acceptedAsPassenger = list.filter((r) => r.role === 'requester' && r.status === 'accepted');
+    return { incomingAsDriver, acceptedAsPassenger };
+  }, [homeRides]);
+
+  const notifCount =
+    rideNotifications.incomingAsDriver.length + rideNotifications.acceptedAsPassenger.length;
+
+  function formatNotifWhen(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+
+  function openNotificationRide(otherUserId) {
+    setNotifOpen(false);
+    setRidesFocusOtherUserId(String(otherUserId));
+    setTab('rides');
+  }
 
   const toggleFilter = useCallback(
     (f) => setFilters((cur) => (cur.includes(f) ? cur.filter((x) => x !== f) : [...cur, f])),
@@ -347,39 +407,69 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
                 : '3 coworkers from Two Sigma on your route today'}
             </Text>
           </View>
-          <AppPressable
-            variant="ghost"
-            style={s.homeAvatarBtn}
-            onPress={() => setHomeProfileMenuOpen(true)}
-            accessibilityLabel="Account menu"
-          >
-            <Avatar initials={userInitials(displayName, accountEmail)} color={C.brand} size={44} />
-          </AppPressable>
+          <View style={s.homeHeaderActions}>
+            <AppPressable
+              variant="ghost"
+              style={s.homeAvatarBtn}
+              onPress={() => setHomeProfileMenuOpen(true)}
+              accessibilityLabel="Account menu"
+            >
+              <Avatar initials={userInitials(displayName, accountEmail)} color={C.brand} size={44} />
+            </AppPressable>
+            <AppPressable
+              variant="ghost"
+              style={s.homeBellBtn}
+              onPress={() => setNotifOpen(true)}
+              accessibilityLabel={`Notifications${notifCount ? `, ${notifCount} unread` : ''}`}
+              accessibilityHint="Ride requests and confirmations"
+            >
+              <Ionicons name="notifications-outline" size={26} color={C.text} />
+              {notifCount > 0 ? (
+                <View style={s.homeBellBadge}>
+                  <Text style={s.homeBellBadgeTxt}>{notifCount > 9 ? '9+' : String(notifCount)}</Text>
+                </View>
+              ) : null}
+            </AppPressable>
+          </View>
         </View>
       <AppPressable
         variant="solid"
         style={s.alert}
-        onPress={() => setTab('matches')}
+        onPress={() => {
+          if (pendingDriverIds.length > 0) {
+            const matchDriver = matches.find((m) => pendingDriverIds.includes(m.id));
+            setRidesFocusOtherUserId(String(matchDriver?.id ?? pendingDriverIds[0]));
+            setTab('rides');
+          } else {
+            setTab('matches');
+          }
+        }}
         android_ripple={{ color: 'rgba(0,0,0,0.14)' }}
+        accessibilityRole="button"
+        accessibilityHint={pendingDriverIds.length ? 'Opens Activity' : 'Opens Find'}
       >
-        <Text style={s.alertOver}>{pendingDriverIds.length ? 'Ride requested' : "Today's commute"}</Text>
-        <Text style={s.alertTitle}>
-          {commute ? `${pendingDriverIds.length ? 'Waiting on' : 'Best match:'} ${commute.name}` : 'No ride lined up yet'}
-        </Text>
-        <Text style={s.alertSub}>
-          {commute
-            ? [commute.time, commute.area].filter(Boolean).join(' · ') || 'Carpool match from your profile'
-            : 'Open Find to request a ride'}
-        </Text>
-        <View style={s.rowWrap}>
-          <View style={s.pill}>
-            <Text style={s.pillText}>{pendingDriverIds.length ? 'Pending confirmation' : `${commute?.score ?? 0}% match`}</Text>
+        <View style={s.alertRow}>
+          <View style={s.alertBody}>
+            <Text style={s.alertOver}>{pendingDriverIds.length ? 'Ride requested' : "Today's commute"}</Text>
+            <Text style={s.alertTitle}>
+              {commute
+                ? `${pendingDriverIds.length ? 'Waiting on' : 'Best match:'} ${commute.name}`
+                : 'No ride lined up yet'}
+            </Text>
+            <Text style={s.alertSub}>
+              {commute
+                ? [commute.time, commute.area].filter(Boolean).join(' · ') || 'Carpool match from your profile'
+                : 'Open Find to request a ride'}
+            </Text>
+            {pendingDriverIds.length ? (
+              <View style={s.rowWrap}>
+                <View style={s.pill}>
+                  <Text style={s.pillText}>Pending confirmation</Text>
+                </View>
+              </View>
+            ) : null}
           </View>
-          {commute ? (
-            <View style={s.pill}>
-              <Text style={s.pillText}>Route {commute.overlap}%</Text>
-            </View>
-          ) : null}
+          <Ionicons name="chevron-forward" size={22} color="rgba(2, 27, 20, 0.38)" style={s.alertChevron} />
         </View>
       </AppPressable>
       <Text style={s.section}>Coworkers driving today</Text>
@@ -411,9 +501,11 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
             <View style={{ flex: 1 }}>
               <Text style={s.rowTitle}>{m.name}</Text>
               <Text style={s.rowSub}>
-                {m.score}% match · Route {m.overlap}% · Time {m.timeScore}%
-                {m.area ? ` · ${m.area}` : ''}
+                {[m.time && `${m.time} depart`, m.area].filter(Boolean).join(' · ') || 'Similar route'}
               </Text>
+              {m.vehicleLabel ? (
+                <Text style={[s.rowSub, s.homeCoworkerVehicle]}>{m.vehicleLabel}</Text>
+              ) : null}
             </View>
             <Badge label={i === 0 ? 'Top' : 'View'} tone={i === 0 ? 'brand' : 'gray'} />
           </AppPressable>
@@ -444,16 +536,51 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
       )}
       <Text style={s.section}>This week</Text>
       <View style={s.card}>
-        <Text style={s.rowSub}>
-          Calendar sync is not connected yet. Use Find to plan rides with matched coworkers.
-        </Text>
-        <AppPressable
-          variant="ghost"
-          style={[s.ghostBtn, { alignSelf: 'flex-start', marginTop: 12 }]}
-          onPress={() => setTab('matches')}
-        >
-          <Text style={s.ghostText}>Open Find</Text>
-        </AppPressable>
+        {loadingImpact && impact.weekly.length === 0 ? (
+          <ActivityIndicator color={C.brand} style={{ paddingVertical: 16 }} />
+        ) : impact.weekly.length > 0 ? (
+          <>
+            {impact.weekly.map((row, idx) => (
+              <View
+                key={`${row.label}-${idx}`}
+                style={[
+                  s.weekRow,
+                  idx === impact.weekly.length - 1 && { borderBottomWidth: 0 },
+                ]}
+              >
+                <View style={{ width: 52 }}>
+                  <Text style={s.weekDay}>{row.d}</Text>
+                  {row.label ? <Text style={s.weekDate}>{row.label}</Text> : null}
+                </View>
+                <Text style={s.weekText}>
+                  {row.rides > 0
+                    ? `${row.rides} ride${row.rides === 1 ? '' : 's'} · $${Number(row.v).toFixed(2)} saved`
+                    : 'No shared rides'}
+                </Text>
+              </View>
+            ))}
+            <AppPressable
+              variant="ghost"
+              style={[s.ghostBtn, { alignSelf: 'flex-start', marginTop: 8 }]}
+              onPress={() => setTab('matches')}
+            >
+              <Text style={s.ghostText}>Open Find</Text>
+            </AppPressable>
+          </>
+        ) : (
+          <>
+            <Text style={s.rowSub}>
+              Complete a carpool from Activity to see savings by day, or use Find to plan rides.
+            </Text>
+            <AppPressable
+              variant="ghost"
+              style={[s.ghostBtn, { alignSelf: 'flex-start', marginTop: 12 }]}
+              onPress={() => setTab('matches')}
+            >
+              <Text style={s.ghostText}>Open Find</Text>
+            </AppPressable>
+          </>
+        )}
       </View>
       </ScrollView>
       <Modal
@@ -492,6 +619,79 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
           </View>
         </View>
       </Modal>
+      <Modal
+        visible={notifOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setNotifOpen(false)}
+      >
+        <View style={s.notifModalRoot}>
+          <Pressable style={s.notifBackdrop} onPress={() => setNotifOpen(false)} />
+          <View style={[s.notifSheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
+            <View style={s.notifHandle} />
+            <Text style={s.notifSheetTitle}>Notifications</Text>
+            <Text style={s.notifSheetSub}>Ride requests and confirmations</Text>
+            <ScrollView
+              style={s.notifScroll}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {notifCount === 0 ? (
+                <Text style={s.notifEmpty}>You&apos;re all caught up.</Text>
+              ) : null}
+              {rideNotifications.incomingAsDriver.length > 0 ? (
+                <>
+                  <Text style={s.notifSection}>Needs your response</Text>
+                  {rideNotifications.incomingAsDriver.map((ride) => {
+                    const o = ride.other_user;
+                    return (
+                      <AppPressable
+                        key={`nd-${ride.id}`}
+                        variant="default"
+                        style={s.notifRow}
+                        onPress={() => openNotificationRide(o.id)}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.notifRowTitle}>{o.name} asked to ride with you</Text>
+                          <Text style={s.notifRowSub}>{formatNotifWhen(ride.created_at)}</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color={C.faint} />
+                      </AppPressable>
+                    );
+                  })}
+                </>
+              ) : null}
+              {rideNotifications.acceptedAsPassenger.length > 0 ? (
+                <>
+                  <Text style={[s.notifSection, rideNotifications.incomingAsDriver.length > 0 && s.notifSectionSpaced]}>
+                    Confirmed for you
+                  </Text>
+                  {rideNotifications.acceptedAsPassenger.map((ride) => {
+                    const o = ride.other_user;
+                    return (
+                      <AppPressable
+                        key={`na-${ride.id}`}
+                        variant="default"
+                        style={s.notifRow}
+                        onPress={() => openNotificationRide(o.id)}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.notifRowTitle}>{o.name} accepted your ride request</Text>
+                          <Text style={s.notifRowSub}>{formatNotifWhen(ride.created_at)}</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color={C.faint} />
+                      </AppPressable>
+                    );
+                  })}
+                </>
+              ) : null}
+            </ScrollView>
+            <AppPressable variant="link" style={s.notifCloseBtn} onPress={() => setNotifOpen(false)}>
+              <Text style={s.sub}>Close</Text>
+            </AppPressable>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 
@@ -526,6 +726,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
             accessToken={accessToken}
             bottomPadding={tabBarHeight}
             refreshKey={ridesRefreshKey}
+            focusOtherUserId={ridesFocusOtherUserId}
             onPressFind={() => {
               setFindFocusId(null);
               setTab('matches');
@@ -643,8 +844,15 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
                     ['Match score', `${sheet.score}%`],
                     ['Route overlap', `${sheet.overlap}%`],
                     ['Time fit', `${sheet.timeScore}%`],
-                  ].map(([rowLabel, v], idx) => (
-                    <View key={String(rowLabel)} style={[s.sheetRow, idx === 2 && { borderBottomWidth: 0 }]}>
+                    ...(sheet.vehicleLabel ? [['Their vehicle', sheet.vehicleLabel]] : []),
+                    ...(sheet.totalDriveMiles > 0
+                      ? [['Total drive (w/ pickup)', `~${Number(sheet.totalDriveMiles).toFixed(1)} mi`]]
+                      : []),
+                  ].map(([rowLabel, v], idx, rows) => (
+                    <View
+                      key={String(rowLabel)}
+                      style={[s.sheetRow, idx === rows.length - 1 && { borderBottomWidth: 0 }]}
+                    >
                       <Text style={s.rowSub}>{rowLabel}</Text>
                       <Text style={s.sheetVal}>{v}</Text>
                     </View>
@@ -708,7 +916,75 @@ const s = StyleSheet.create({
     backgroundColor: C.card,
   },
   homeHeaderText: { flex: 1, minWidth: 0 },
+  homeHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  homeBellBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  homeBellBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: C.sky,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  homeBellBadgeTxt: { color: '#fff', fontSize: 10, fontWeight: '800' },
   homeAvatarBtn: { borderRadius: 999, overflow: 'hidden' },
+  notifModalRoot: { flex: 1, justifyContent: 'flex-end' },
+  notifBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
+  notifSheet: {
+    backgroundColor: C.panel,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: C.line,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    maxHeight: '78%',
+  },
+  notifHandle: {
+    alignSelf: 'center',
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: C.line,
+    marginBottom: 14,
+  },
+  notifSheetTitle: { color: C.text, fontSize: 20, fontWeight: '800' },
+  notifSheetSub: { color: C.muted, fontSize: 13, marginTop: 4, marginBottom: 12 },
+  notifScroll: { maxHeight: 420 },
+  notifEmpty: { color: C.muted, fontSize: 15, paddingVertical: 20, textAlign: 'center' },
+  notifSection: {
+    color: C.faint,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  notifSectionSpaced: { marginTop: 20 },
+  notifRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: C.line,
+  },
+  notifRowTitle: { color: C.text, fontSize: 15, fontWeight: '700' },
+  notifRowSub: { color: C.muted, fontSize: 13, marginTop: 4 },
+  notifCloseBtn: { alignItems: 'center', paddingVertical: 16 },
   profileMenuRoot: { flex: 1 },
   profileMenuBackdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -773,6 +1049,9 @@ const s = StyleSheet.create({
     padding: 18,
     overflow: 'hidden',
   },
+  alertRow: { flexDirection: 'row', alignItems: 'center' },
+  alertBody: { flex: 1, minWidth: 0, paddingRight: 4 },
+  alertChevron: { marginLeft: 4 },
   alertOver: { color: 'rgba(0,0,0,0.55)', fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
   alertTitle: { color: '#021b14', fontSize: 21, fontWeight: '800', marginTop: 6 },
   alertSub: { color: 'rgba(0,0,0,0.66)', fontSize: 13, marginTop: 6 },
@@ -803,6 +1082,8 @@ const s = StyleSheet.create({
   },
   rowTitle: { color: C.text, fontSize: 15, fontWeight: '700' },
   rowSub: { color: C.muted, fontSize: 12, marginTop: 4 },
+  homeCoworkerVehicle: { marginTop: 4, fontSize: 12, color: C.faint, letterSpacing: 0.2 },
+  findVehicleMeta: { marginTop: 4, fontSize: 12, color: C.faint, letterSpacing: 0.2 },
   badge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
   badgeText: { fontSize: 11, fontWeight: '800' },
   avatar: { alignItems: 'center', justifyContent: 'center' },
@@ -823,7 +1104,8 @@ const s = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: C.line,
   },
-  weekDay: { width: 34, color: C.faint, fontSize: 11, fontWeight: '800' },
+  weekDay: { color: C.faint, fontSize: 11, fontWeight: '800' },
+  weekDate: { color: C.muted, fontSize: 10, fontWeight: '600', marginTop: 2 },
   weekText: { flex: 1, color: C.text, fontSize: 13 },
   ghostBtn: {
     backgroundColor: 'rgba(255,255,255,0.07)',
@@ -952,27 +1234,27 @@ const s = StyleSheet.create({
   matchEmail: { color: C.faint, fontSize: 11, marginTop: 4 },
   score: { color: C.brand, fontSize: 28, fontWeight: '800' },
   scoreLbl: { color: C.faint, fontSize: 10, textTransform: 'uppercase', fontWeight: '700' },
-  bar: {
-    height: 6,
-    borderRadius: 99,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    marginTop: 12,
-    overflow: 'hidden',
-  },
-  fill: { height: '100%', backgroundColor: C.brand, borderRadius: 99 },
-  micro: { color: C.faint, fontSize: 10, marginTop: 6 },
-  metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
   metric: {
     flexGrow: 1,
-    minWidth: '22%',
+    flexBasis: '30%',
+    minWidth: '28%',
+    maxWidth: '33%',
     backgroundColor: 'rgba(255,255,255,0.04)',
     borderRadius: 11,
     paddingVertical: 10,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     alignItems: 'center',
   },
-  metricNum: { color: C.text, fontSize: 13, fontWeight: '800' },
-  metricKey: { color: C.faint, fontSize: 9.5, fontWeight: '700', textTransform: 'uppercase', marginTop: 4 },
+  metricNum: { color: C.text, fontSize: 13, fontWeight: '800', textAlign: 'center' },
+  metricKey: {
+    color: C.faint,
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginTop: 4,
+    textAlign: 'center',
+  },
   actions: { flexDirection: 'row', gap: 8, marginTop: 14 },
   primary: {
     flex: 1,
@@ -1102,7 +1384,7 @@ const s = StyleSheet.create({
 });
 
 /** Row height hint for getItemLayout + scroll math; keep ≤ real height to avoid overscrolling. */
-const FIND_MATCH_ROW_ESTIMATE = 330;
+const FIND_MATCH_ROW_ESTIMATE = 400;
 /** Extra pixels to subtract from target offset so the focused card sits higher (scroll feels less “deep”). */
 const FIND_FOCUS_SCROLL_BACK_PX = 128;
 
@@ -1230,25 +1512,30 @@ function FindMatchesList({
               <Text style={s.rowSub}>
                 {[m.role, m.team].filter(Boolean).join(' · ') || 'Route match'}
               </Text>
+              {m.vehicleLabel ? (
+                <Text style={[s.rowSub, s.findVehicleMeta]}>{m.vehicleLabel}</Text>
+              ) : null}
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={s.score}>{m.score}%</Text>
               <Text style={s.scoreLbl}>match</Text>
             </View>
           </View>
-          <Text style={s.rowSub}>
-            {[m.time, m.area].filter(Boolean).join(' · ') || 'Commute details from profile'}
-            {m.eta != null && m.eta > 0 ? ` · ${m.eta} min est.` : ''}
-          </Text>
-          <View style={s.bar}>
-            <View style={[s.fill, { width: `${m.overlap}%` }]} />
-          </View>
-          <View style={s.between}>
-            <Text style={s.micro}>Your home</Text>
-            <Text style={s.micro}>{m.overlap}% overlap</Text>
-            <Text style={s.micro}>Office</Text>
-          </View>
           <View style={s.metrics}>
+            <View style={s.metric}>
+              <Text style={s.metricNum}>{m.time || '—'}</Text>
+              <Text style={s.metricKey}>Departs</Text>
+            </View>
+            <View style={s.metric}>
+              <Text style={s.metricNum}>{m.eta != null && m.eta > 0 ? `${m.eta} min` : '—'}</Text>
+              <Text style={s.metricKey}>Est. ride</Text>
+            </View>
+            <View style={s.metric}>
+              <Text style={[s.metricNum, { color: C.text }]}>
+                {m.totalDriveMiles > 0 ? `${m.totalDriveMiles.toFixed(1)} mi` : '—'}
+              </Text>
+              <Text style={s.metricKey}>Trip w/ stop</Text>
+            </View>
             <View style={s.metric}>
               <Text style={[s.metricNum, { color: i === 1 ? C.amber : C.brand }]}>
                 +{Number(m.detour ?? 0)} min
@@ -1256,16 +1543,12 @@ function FindMatchesList({
               <Text style={s.metricKey}>Detour</Text>
             </View>
             <View style={s.metric}>
-              <Text style={s.metricNum}>{m.time}</Text>
-              <Text style={s.metricKey}>Departs</Text>
-            </View>
-            <View style={s.metric}>
               <Text style={[s.metricNum, { color: C.brand }]}>${Number(m.cost ?? 0).toFixed(2)}</Text>
               <Text style={s.metricKey}>Your share</Text>
             </View>
             <View style={s.metric}>
               <Text style={[s.metricNum, { color: C.sky }]}>{Number(m.co2 ?? 0).toFixed(1)}kg</Text>
-              <Text style={s.metricKey}>CO2 saved</Text>
+              <Text style={s.metricKey}>CO₂ saved</Text>
             </View>
           </View>
           <View style={s.actions}>
