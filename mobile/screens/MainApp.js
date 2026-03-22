@@ -1316,16 +1316,15 @@ const s = StyleSheet.create({
   matchEmail: { color: C.faint, fontSize: 11, marginTop: 4 },
   score: { color: C.brand, fontSize: 28, fontWeight: '800' },
   scoreLbl: { color: C.faint, fontSize: 10, textTransform: 'uppercase', fontWeight: '700' },
-  metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  metrics: { marginTop: 12, gap: 8 },
+  metricsRow: { flexDirection: 'row', gap: 8 },
   metric: {
-    flexGrow: 1,
-    flexBasis: '30%',
-    minWidth: '28%',
-    maxWidth: '33%',
+    flex: 1,
+    minWidth: 0,
     backgroundColor: 'rgba(255,255,255,0.04)',
     borderRadius: 11,
     paddingVertical: 10,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     alignItems: 'center',
   },
   metricNum: { color: C.text, fontSize: 13, fontWeight: '800', textAlign: 'center' },
@@ -1337,6 +1336,8 @@ const s = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
   },
+  metricNumEmphasis: { fontSize: 18, letterSpacing: -0.3 },
+  metricKeyEmphasis: { fontSize: 10, marginTop: 6 },
   actions: { flexDirection: 'row', gap: 8, marginTop: 14 },
   primary: {
     flex: 1,
@@ -1580,7 +1581,7 @@ function FindMatchesList({
   );
 
   const renderItem = useCallback(
-    ({ item: m, index: i }) => {
+    ({ item: m }) => {
       const done = pendingDriverIds.includes(m.id);
       const cancelBusy = cancellingDriverId === m.id;
       const focused = findFocusId === m.id;
@@ -1608,33 +1609,35 @@ function FindMatchesList({
             </View>
           </View>
           <View style={s.metrics}>
-            <View style={s.metric}>
-              <Text style={s.metricNum}>{m.time || '—'}</Text>
-              <Text style={s.metricKey}>Departs</Text>
+            <View style={s.metricsRow}>
+              <View style={s.metric}>
+                <Text style={s.metricNum}>{m.time || '—'}</Text>
+                <Text style={s.metricKey}>Departs</Text>
+              </View>
+              <View style={s.metric}>
+                <Text style={s.metricNum}>{m.eta != null && m.eta > 0 ? `${m.eta} min` : '—'}</Text>
+                <Text style={s.metricKey}>Est. ride</Text>
+              </View>
+              <View style={s.metric}>
+                <Text style={[s.metricNum, { color: C.text }]}>
+                  {m.totalDriveMiles > 0 ? `${m.totalDriveMiles.toFixed(1)} mi` : '—'}
+                </Text>
+                <Text style={s.metricKey}>Trip w/ stop</Text>
+              </View>
             </View>
-            <View style={s.metric}>
-              <Text style={s.metricNum}>{m.eta != null && m.eta > 0 ? `${m.eta} min` : '—'}</Text>
-              <Text style={s.metricKey}>Est. ride</Text>
-            </View>
-            <View style={s.metric}>
-              <Text style={[s.metricNum, { color: C.text }]}>
-                {m.totalDriveMiles > 0 ? `${m.totalDriveMiles.toFixed(1)} mi` : '—'}
-              </Text>
-              <Text style={s.metricKey}>Trip w/ stop</Text>
-            </View>
-            <View style={s.metric}>
-              <Text style={[s.metricNum, { color: i === 1 ? C.amber : C.brand }]}>
-                +{Number(m.detour ?? 0)} min
-              </Text>
-              <Text style={s.metricKey}>Detour</Text>
-            </View>
-            <View style={s.metric}>
-              <Text style={[s.metricNum, { color: C.brand }]}>${Number(m.cost ?? 0).toFixed(2)}</Text>
-              <Text style={s.metricKey}>Your share</Text>
-            </View>
-            <View style={s.metric}>
-              <Text style={[s.metricNum, { color: C.sky }]}>{Number(m.co2 ?? 0).toFixed(1)}kg</Text>
-              <Text style={s.metricKey}>CO₂ saved</Text>
+            <View style={s.metricsRow}>
+              <View style={[s.metric, { paddingVertical: 12 }]}>
+                <Text style={[s.metricNum, s.metricNumEmphasis, { color: C.brand }]}>
+                  ${Number(m.cost ?? 0).toFixed(2)}
+                </Text>
+                <Text style={[s.metricKey, s.metricKeyEmphasis]}>Your share</Text>
+              </View>
+              <View style={[s.metric, { paddingVertical: 12 }]}>
+                <Text style={[s.metricNum, s.metricNumEmphasis, { color: C.sky }]}>
+                  {Number(m.co2 ?? 0).toFixed(1)}kg
+                </Text>
+                <Text style={[s.metricKey, s.metricKeyEmphasis]}>CO₂ saved</Text>
+              </View>
             </View>
           </View>
           <View style={s.actions}>
