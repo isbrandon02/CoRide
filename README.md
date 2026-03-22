@@ -1,10 +1,10 @@
 # CoRide
 
-CoRide is a carpooling app prototype designed for employees who commute to the same workplace.
+CoRide is a carpooling app prototype built around one main idea: making everyday commuting more sustainable in a way that people can actually feel and track.
 
-Many coworkers travel from nearby areas to the same office around the same time, yet they still drive alone. This creates unnecessary traffic, higher commuting costs, and more carbon emissions than needed. CoRide is meant to make shared commuting feel practical, normal, and actually worth doing. Instead of treating carpooling like an inconvenience, the app focuses on showing both the personal and environmental value of sharing rides.
+Many coworkers travel from nearby areas to the same office around the same time, yet they still drive alone. That means more traffic, more fuel burned, more money spent, and more emissions than necessary. CoRide is meant to turn that into a practical sustainability habit by helping people share rides with coworkers who already have similar routes and schedules.
 
-Rather than expecting users to coordinate everything on their own, the app collects key commute details like general home area, office destination, work schedule, and vehicle availability. From there, CoRide suggests potential ride matches, lets users request or accept shared trips, and tracks long-term impact through money saved and emissions reduced. The goal is to make sustainability feel measurable and connected to everyday commuting decisions.
+Rather than stopping at ride matching, the app also makes the impact visible. CoRide tracks money saved, rides shared, and CO2 avoided, then reinforces that progress with badges, weekly goals, and a leaderboard. The goal is to make sustainability feel personal, measurable, and motivating instead of abstract.
 
 ## What CoRide does
 
@@ -21,11 +21,9 @@ The current app supports:
 
 ## Why we built it
 
-We built CoRide around the overlap between sustainability, commuting costs, and daily routine.
+We wanted CoRide to focus on a sustainability problem that already exists inside everyday routine instead of asking people to completely change how they live.
 
-A lot of sustainability solutions ask people to make major lifestyle changes, which can be hard to maintain. CoRide takes a smaller and more realistic approach. If coworkers are already going to the same place at roughly the same time, sharing that trip is one of the easiest ways to reduce environmental impact. It can lower emissions, save money, and make commuting feel a little less isolating.
-
-We also wanted the project to feel like a real product, not just a matching algorithm with a simple interface on top. That is why the app includes onboarding, ride coordination, chat, and progress tracking instead of stopping at one recommendation screen.
+Work commutes are repeated, predictable, and often shared by people going to the same office. That made them a good place to design something practical. We built the project around reducing friction: helping people find likely matches, coordinate rides more easily, and stay motivated by seeing their progress over time.
 
 ## Project structure
 
