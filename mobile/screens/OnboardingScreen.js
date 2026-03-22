@@ -10,7 +10,9 @@ import {
   View,
 } from 'react-native';
 
+import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
 import AppPressable from '../components/AppPressable';
+import { hasGoogleMapsKey, normalizeAddressWithGoogle } from '../src/googleMaps';
 import { saveOnboarding } from '../src/auth';
 
 const accent = '#0D9488';
@@ -39,10 +41,14 @@ export default function OnboardingScreen({ accessToken, onComplete }) {
 
     setLoading(true);
     try {
+      const [normalizedHome, normalizedOffice] = await Promise.all([
+        normalizeAddressWithGoogle(homeAddress),
+        normalizeAddressWithGoogle(officeAddress),
+      ]);
       const yearNum = carYear.trim() ? parseInt(carYear.trim(), 10) : null;
       await saveOnboarding(accessToken, {
-        home_address: homeAddress.trim(),
-        office_address: officeAddress.trim(),
+        home_address: normalizedHome.formattedAddress,
+        office_address: normalizedOffice.formattedAddress,
         hobbies: hobbies.trim(),
         commute_route: commuteRoute.trim(),
         work_schedule: {
@@ -57,6 +63,8 @@ export default function OnboardingScreen({ accessToken, onComplete }) {
           color: carColor.trim(),
         },
       });
+      setHomeAddress(normalizedHome.formattedAddress);
+      setOfficeAddress(normalizedOffice.formattedAddress);
       onComplete();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong');
@@ -82,24 +90,29 @@ export default function OnboardingScreen({ accessToken, onComplete }) {
 
         <View style={styles.card}>
           <Text style={styles.section}>Home</Text>
-          <TextInput
-            style={styles.input}
+          <AddressAutocompleteInput
             value={homeAddress}
             onChangeText={setHomeAddress}
-            placeholder="Street, city (where you usually leave from)"
-            placeholderTextColor="#94A3B8"
+            placeholder="Start typing your home address"
+            mode="address"
             editable={!loading}
+            inputStyle={styles.input}
           />
 
           <Text style={[styles.section, styles.sectionSpaced]}>Office</Text>
-          <TextInput
-            style={styles.input}
+          <AddressAutocompleteInput
             value={officeAddress}
             onChangeText={setOfficeAddress}
-            placeholder="Work address"
-            placeholderTextColor="#94A3B8"
+            placeholder="Start typing your office address or office name"
+            mode="place"
             editable={!loading}
+            inputStyle={styles.input}
           />
+          {hasGoogleMapsKey() ? (
+            <Text style={styles.helperText}>
+              Home stays address-based. Office can match an address, building, or place name. We still verify the final result when you save.
+            </Text>
+          ) : null}
 
           <Text style={[styles.section, styles.sectionSpaced]}>Commute route</Text>
           <TextInput
@@ -249,6 +262,12 @@ const styles = StyleSheet.create({
   inputMultiline: {
     minHeight: 88,
     paddingTop: Platform.OS === 'ios' ? 12 : 10,
+  },
+  helperText: {
+    marginTop: 10,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#64748B',
   },
   row: { flexDirection: 'row', gap: 10, marginTop: 10 },
   inputHalf: { flex: 1 },

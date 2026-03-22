@@ -13,7 +13,9 @@ import {
   View,
 } from 'react-native';
 
+import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
 import AppPressable from '../components/AppPressable';
+import { hasGoogleMapsKey, normalizeAddressWithGoogle } from '../src/googleMaps';
 import { getProfile, saveOnboarding } from '../src/auth';
 
 const bg = '#0B0B0C';
@@ -248,7 +250,13 @@ export default function ProfileSettingsScreen({
     }
     setSaving(true);
     try {
+      const [normalizedHome, normalizedOffice] = await Promise.all([
+        normalizeAddressWithGoogle(homeAddress),
+        normalizeAddressWithGoogle(officeAddress),
+      ]);
       const payload = buildProfilePayload();
+      payload.home_address = normalizedHome.formattedAddress;
+      payload.office_address = normalizedOffice.formattedAddress;
       const data = await saveOnboarding(accessToken, {
         name: payload.name,
         age: payload.age ? Number(payload.age) : null,
@@ -270,6 +278,8 @@ export default function ProfileSettingsScreen({
         status: data?.status ?? payload.status,
         avatar_url: data?.avatar_url ?? avatarUrl.trim(),
       });
+      setHomeAddress(normalizedHome.formattedAddress);
+      setOfficeAddress(normalizedOffice.formattedAddress);
       setEditMode(false);
       onSaveSuccess?.();
     } catch (e) {
@@ -462,17 +472,46 @@ export default function ProfileSettingsScreen({
           <Text style={styles.sectionTitle}>Where your rides begin and end</Text>
           <Text style={styles.sectionNote}>These are the anchors we use to personalize your route matching.</Text>
           <Text style={styles.section}>Home</Text>
-          {renderInput({
-            value: homeAddress,
-            onChangeText: setHomeAddress,
-            placeholder: 'Street, city (where you usually leave from)',
-          })}
+          {editMode ? (
+            <AddressAutocompleteInput
+              value={homeAddress}
+              onChangeText={setHomeAddress}
+              placeholder="Start typing your home address"
+              mode="address"
+              editable={!saving}
+              inputStyle={styles.input}
+              dropdownStyle={styles.addressDropdown}
+              textColor={text}
+              mutedColor={muted}
+              borderColor="#343438"
+              surfaceColor="#101012"
+            />
+          ) : (
+            <StaticValue value={homeAddress} />
+          )}
           <Text style={[styles.section, styles.sectionSpaced]}>Office</Text>
-          {renderInput({
-            value: officeAddress,
-            onChangeText: setOfficeAddress,
-            placeholder: 'Work address',
-          })}
+          {editMode ? (
+            <AddressAutocompleteInput
+              value={officeAddress}
+              onChangeText={setOfficeAddress}
+              placeholder="Start typing your office address or office name"
+              mode="place"
+              editable={!saving}
+              inputStyle={styles.input}
+              dropdownStyle={styles.addressDropdown}
+              textColor={text}
+              mutedColor={muted}
+              borderColor="#343438"
+              surfaceColor="#101012"
+            />
+          ) : (
+            <StaticValue value={officeAddress} />
+          )}
+          {hasGoogleMapsKey() ? (
+            <Text style={styles.helperText}>
+              Home stays address-based. Office can match an address, building, or place name. We still verify the final result when you save.
+            </Text>
+          ) : null}
           <Text style={[styles.section, styles.sectionSpaced]}>Commute route</Text>
           {renderInput({
             value: commuteRoute,
@@ -969,9 +1008,18 @@ const styles = StyleSheet.create({
     color: text,
     backgroundColor: '#101012',
   },
+  addressDropdown: {
+    backgroundColor: '#101012',
+  },
   inputMultiline: {
     minHeight: 96,
     paddingTop: Platform.OS === 'ios' ? 12 : 10,
+  },
+  helperText: {
+    marginTop: 10,
+    fontSize: 12,
+    color: muted,
+    lineHeight: 18,
   },
   staticField: {
     borderWidth: 1,

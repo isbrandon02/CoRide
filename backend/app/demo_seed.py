@@ -109,6 +109,10 @@ def seed_demo_accounts() -> tuple[int, int]:
             ws = row.get("work_schedule") or {}
             profile = UserProfile(
                 user_id=user.id,
+                name=(row.get("name") or "").strip(),
+                age=row.get("age"),
+                gender=(row.get("gender") or "").strip(),
+                status=(row.get("status") or "").strip(),
                 home_address=row.get("home_address", "").strip(),
                 office_address=row.get("office_address", "").strip(),
                 hobbies=_hobbies_with_meta(row),

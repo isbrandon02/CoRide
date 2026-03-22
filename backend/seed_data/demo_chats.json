@@ -1,81 +1,77 @@
 {
   "threads": [
     {
-      "participants": ["alex.kim@example.com", "jordan.rivera@example.com"],
+      "participants": ["davideatscats@gmail.com", "emma.goldberg@coride.demo"],
       "messages": [
         {
-          "from_email": "alex.kim@example.com",
-          "body": "Hey Jordan — still good for 8:15 tomorrow?",
+          "from_email": "davideatscats@gmail.com",
+          "body": "Hey Emma, still good for that 8:15 ride tomorrow?",
           "minutes_ago": 180
         },
         {
-          "from_email": "jordan.rivera@example.com",
-          "body": "Yep, I'll swing by the usual lot.",
-          "minutes_ago": 175
-        },
-        {
-          "from_email": "alex.kim@example.com",
-          "body": "Perfect, thanks!",
-          "minutes_ago": 170
+          "from_email": "emma.goldberg@coride.demo",
+          "body": "Yep, I can swing by Hudson Square first.",
+          "minutes_ago": 172
         }
       ]
     },
     {
-      "participants": ["sam.patel@example.com", "morgan.lee@example.com"],
+      "participants": ["davideatscats@gmail.com", "marcus.lee@coride.demo"],
       "messages": [
         {
-          "from_email": "morgan.lee@example.com",
-          "body": "Traffic on the bridge was rough this morning.",
-          "minutes_ago": 400
+          "from_email": "davideatscats@gmail.com",
+          "body": "If you are heading over the bridge anyway, I can meet by Canal.",
+          "minutes_ago": 95
         },
         {
-          "from_email": "sam.patel@example.com",
-          "body": "Yeah I took 237 instead. Want to try that Wednesday?",
-          "minutes_ago": 395
+          "from_email": "marcus.lee@coride.demo",
+          "body": "That works. I will confirm after I leave Brooklyn Heights.",
+          "minutes_ago": 88
         }
       ]
     },
     {
-      "participants": ["casey.nguyen@example.com", "sam.patel@example.com"],
+      "participants": ["davideatscats@gmail.com", "nina.kapoor@coride.demo"],
       "messages": [
         {
-          "from_email": "casey.nguyen@example.com",
-          "body": "Hey Sam — open to driving Thursday?",
+          "from_email": "nina.kapoor@coride.demo",
+          "body": "Could I request a ride for Thursday morning too?",
           "minutes_ago": 60
         },
         {
-          "from_email": "sam.patel@example.com",
-          "body": "Thursday works. Ping me Wednesday night.",
-          "minutes_ago": 55
+          "from_email": "davideatscats@gmail.com",
+          "body": "Yes, send it through the app and I will accept if timing lines up.",
+          "minutes_ago": 53
         }
       ]
     }
   ],
   "group_threads": [
     {
-      "title": "SF office carpool",
+      "title": "Two Sigma Tribeca carpool",
       "participants": [
-        "alex.kim@example.com",
-        "jordan.rivera@example.com",
-        "sam.patel@example.com",
-        "morgan.lee@example.com",
-        "casey.nguyen@example.com"
+        "davideatscats@gmail.com",
+        "emma.goldberg@coride.demo",
+        "marcus.lee@coride.demo",
+        "nina.kapoor@coride.demo",
+        "julian.soto@coride.demo",
+        "sarah.park@coride.demo"
       ],
       "messages": [
         {
-          "from_email": "alex.kim@example.com",
-          "body": "Everyone good for 8:30 at the usual spot?",
-          "minutes_ago": 95
+          "from_email": "emma.goldberg@coride.demo",
+          "body": "Anyone aiming for the office before 8:30 tomorrow?",
+          "minutes_ago": 120
         },
         {
-          "from_email": "sam.patel@example.com",
-          "body": "I'm in — see you there.",
-          "minutes_ago": 88
+          "from_email": "sarah.park@coride.demo",
+          "body": "I am. If traffic is light I can be at 100 6th by 8:20.",
+          "minutes_ago": 113
         },
         {
-          "from_email": "morgan.lee@example.com",
-          "body": "Running 5 min late, save me a spot?",
-          "minutes_ago": 82
+          "from_email": "davideatscats@gmail.com",
+          "body": "Perfect. I will probably be coming from Hudson Square.",
+          "minutes_ago": 107
         }
       ]
     }
