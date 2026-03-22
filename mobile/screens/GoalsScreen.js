@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import AppPressable from '../components/AppPressable';
 import { getImpact, getLeaderboard } from '../src/auth';
@@ -28,6 +29,121 @@ const DEFAULT_WEEKLY_CO2_GOAL_KG = 6;
 const CO2_KG_PER_CAR_MILE = 0.404;
 const CO2_KG_PER_LAPTOP_DAY = 0.16;
 const CO2_KG_PER_GALLON_GAS = 8.89;
+const MAX_FEATURED_BADGES = 3;
+const BADGES = [
+  {
+    id: 'welcome-aboard',
+    title: 'Welcome Aboard',
+    icon: 'sparkles',
+    color: '#a78bfa',
+    description: 'Create your CoRide account and start your sustainability journey.',
+    isEarned: () => true,
+  },
+  {
+    id: 'first-ride',
+    title: 'First Ride',
+    icon: 'car-sport',
+    color: '#4ea8f5',
+    description: 'Complete your first shared commute.',
+    isEarned: ({ totalRides }) => totalRides >= 1,
+  },
+  {
+    id: 'carpool-regular',
+    title: 'Carpool Regular',
+    icon: 'people',
+    color: '#4ea8f5',
+    description: 'Share 5 rides with coworkers.',
+    isEarned: ({ totalRides }) => totalRides >= 5,
+  },
+  {
+    id: 'commute-crew',
+    title: 'Commute Crew',
+    icon: 'people-circle',
+    color: '#4ea8f5',
+    description: 'Share 15 rides with coworkers.',
+    isEarned: ({ totalRides }) => totalRides >= 15,
+  },
+  {
+    id: 'co2-seedling',
+    title: 'CO2 Seedling',
+    icon: 'leaf',
+    color: '#00c896',
+    description: 'Save 5 kg of CO2.',
+    isEarned: ({ totalCo2Saved }) => totalCo2Saved >= 5,
+  },
+  {
+    id: 'carbon-cutter',
+    title: 'Carbon Cutter',
+    icon: 'leaf',
+    color: '#00c896',
+    description: 'Save 20 kg of CO2.',
+    isEarned: ({ totalCo2Saved }) => totalCo2Saved >= 20,
+  },
+  {
+    id: 'climate-champion',
+    title: 'Climate Champion',
+    icon: 'planet',
+    color: '#00c896',
+    description: 'Save 50 kg of CO2.',
+    isEarned: ({ totalCo2Saved }) => totalCo2Saved >= 50,
+  },
+  {
+    id: 'green-week',
+    title: 'Green Week',
+    icon: 'flash',
+    color: '#f5a623',
+    description: 'Save 3 kg of CO2 in a single week.',
+    isEarned: ({ weeklyCo2Saved }) => weeklyCo2Saved >= 3,
+  },
+  {
+    id: 'greener-week',
+    title: 'Greener Week',
+    icon: 'flash',
+    color: '#f5a623',
+    description: 'Save 6 kg of CO2 in a single week.',
+    isEarned: ({ weeklyCo2Saved }) => weeklyCo2Saved >= 6,
+  },
+  {
+    id: 'greenest-week',
+    title: 'Greenest Week',
+    icon: 'flash',
+    color: '#f5a623',
+    description: 'Save 10 kg of CO2 in a single week.',
+    isEarned: ({ weeklyCo2Saved }) => weeklyCo2Saved >= 10,
+  },
+  {
+    id: 'goal-getter',
+    title: 'Goal Getter',
+    icon: 'trophy',
+    color: '#f5a623',
+    description: 'Hit your weekly CO2 goal.',
+    isEarned: ({ weeklyCo2Saved, weeklyGoalKg }) => weeklyCo2Saved >= weeklyGoalKg,
+  },
+  {
+    id: 'goal-crusher',
+    title: 'Goal Crusher',
+    icon: 'trophy',
+    color: '#f5a623',
+    description: 'Beat your weekly CO2 goal by 25%.',
+    isEarned: ({ weeklyCo2Saved, weeklyGoalKg }) => weeklyGoalKg > 0 && weeklyCo2Saved >= weeklyGoalKg * 1.25,
+  },
+  {
+    id: 'goal-legend',
+    title: 'Goal Legend',
+    icon: 'trophy',
+    color: '#f5a623',
+    description: 'Beat your weekly CO2 goal by 50%.',
+    isEarned: ({ weeklyCo2Saved, weeklyGoalKg }) => weeklyGoalKg > 0 && weeklyCo2Saved >= weeklyGoalKg * 1.5,
+  },
+  {
+    id: 'planet-protector',
+    title: 'Planet Protector',
+    icon: 'earth',
+    color: '#7dd3fc',
+    description: 'Save 100 kg of CO2.',
+    isEarned: ({ totalCo2Saved }) => totalCo2Saved >= 100,
+  },
+];
 
 function initialsFromName(name, email) {
   const raw = String(name || email || '?').trim();
@@ -59,7 +175,50 @@ function formatEquivalencyNumber(value) {
   return `${value.toFixed(2)}`;
 }
 
+function BadgeCard({ badge, compact = false, selected = false, locked = false, placeholder = false }) {
+  if (placeholder) {
+    return (
+      <View style={[styles.badgeCard, styles.badgePlaceholderCard, compact && styles.badgeCardCompact]}>
+        <View style={styles.badgePlaceholderIcon}>
+          <Ionicons name="add" size={18} color={C.faint} />
+        </View>
+        <Text style={styles.badgePlaceholderTitle}>Open slot</Text>
+        <Text style={styles.badgePlaceholderBody}>Earn or select another badge.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={[
+        styles.badgeCard,
+        compact && styles.badgeCardCompact,
+        locked && styles.badgeCardLocked,
+        selected && styles.badgeCardSelected,
+      ]}
+    >
+      <View style={[styles.badgeIconWrap, { backgroundColor: `${badge.color}22` }]}>
+        <Ionicons name={badge.icon} size={compact ? 18 : 22} color={locked ? C.faint : badge.color} />
+      </View>
+      <Text style={[styles.badgeTitle, locked && styles.badgeTitleLocked]} numberOfLines={compact ? 2 : 1}>
+        {badge.title}
+      </Text>
+      <Text style={[styles.badgeDescription, locked && styles.badgeDescriptionLocked]} numberOfLines={compact ? 3 : 2}>
+        {badge.description}
+      </Text>
+      {locked ? <Text style={styles.badgeLockLabel}>Locked</Text> : null}
+      {selected ? (
+        <View style={styles.badgeSelectedPill}>
+          <Ionicons name="checkmark" size={12} color={C.brand} />
+          <Text style={styles.badgeSelectedPillText}>Featured</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export default function GoalsScreen({ accessToken, bottomPadding = 0 }) {
+  const insets = useSafeAreaInsets();
   const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -67,9 +226,13 @@ export default function GoalsScreen({ accessToken, bottomPadding = 0 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [weeklyCo2Saved, setWeeklyCo2Saved] = useState(0);
   const [weeklyRides, setWeeklyRides] = useState(0);
+  const [totalCo2Saved, setTotalCo2Saved] = useState(0);
+  const [totalRides, setTotalRides] = useState(0);
   const [weeklyGoalKg, setWeeklyGoalKg] = useState(DEFAULT_WEEKLY_CO2_GOAL_KG);
   const [goalDraft, setGoalDraft] = useState(String(DEFAULT_WEEKLY_CO2_GOAL_KG));
   const [goalEditorOpen, setGoalEditorOpen] = useState(false);
+  const [badgePickerOpen, setBadgePickerOpen] = useState(false);
+  const [selectedBadgeIds, setSelectedBadgeIds] = useState([]);
 
   useEffect(() => {
     let live = true;
@@ -108,6 +271,8 @@ export default function GoalsScreen({ accessToken, bottomPadding = 0 }) {
     if (!accessToken) {
       setWeeklyCo2Saved(0);
       setWeeklyRides(0);
+      setTotalCo2Saved(0);
+      setTotalRides(0);
       return () => {
         live = false;
       };
@@ -121,11 +286,15 @@ export default function GoalsScreen({ accessToken, bottomPadding = 0 }) {
           : 0;
         setWeeklyCo2Saved(Number(data.current_week_co2_kg ?? 0));
         setWeeklyRides(rides);
+        setTotalCo2Saved(Number(data.total_co2_kg ?? 0));
+        setTotalRides(Number(data.rides_shared ?? 0));
       })
       .catch(() => {
         if (!live) return;
         setWeeklyCo2Saved(0);
         setWeeklyRides(0);
+        setTotalCo2Saved(0);
+        setTotalRides(0);
       });
 
     return () => {
@@ -145,6 +314,42 @@ export default function GoalsScreen({ accessToken, bottomPadding = 0 }) {
     ],
     [weeklyCo2Saved]
   );
+  const badgeProgress = useMemo(
+    () => ({ totalCo2Saved, totalRides, weeklyCo2Saved, weeklyGoalKg }),
+    [totalCo2Saved, totalRides, weeklyCo2Saved, weeklyGoalKg]
+  );
+  const badges = useMemo(
+    () => BADGES.map((badge) => ({ ...badge, earned: badge.isEarned(badgeProgress) })),
+    [badgeProgress]
+  );
+  const earnedBadges = useMemo(() => badges.filter((badge) => badge.earned), [badges]);
+  const earnedBadgeIds = useMemo(() => earnedBadges.map((badge) => badge.id), [earnedBadges]);
+
+  useEffect(() => {
+    setSelectedBadgeIds((prev) => {
+      const kept = prev.filter((id) => earnedBadgeIds.includes(id)).slice(0, MAX_FEATURED_BADGES);
+      if (kept.length === Math.min(MAX_FEATURED_BADGES, earnedBadgeIds.length)) return kept;
+      const additions = earnedBadgeIds
+        .filter((id) => !kept.includes(id))
+        .slice(0, Math.max(0, MAX_FEATURED_BADGES - kept.length));
+      return [...kept, ...additions];
+    });
+  }, [earnedBadgeIds]);
+
+  const featuredBadges = useMemo(
+    () =>
+      selectedBadgeIds
+        .map((id) => badges.find((badge) => badge.id === id))
+        .filter(Boolean),
+    [badges, selectedBadgeIds]
+  );
+  const featuredBadgeSlots = useMemo(() => {
+    const slots = [...featuredBadges];
+    while (slots.length < MAX_FEATURED_BADGES) {
+      slots.push(null);
+    }
+    return slots;
+  }, [featuredBadges]);
 
   const sortedLeaderboard = useMemo(() => {
     const list = [...leaderboard];
@@ -209,6 +414,43 @@ export default function GoalsScreen({ accessToken, bottomPadding = 0 }) {
                 </Text>
               ))}
             </View>
+          </View>
+
+          <View style={styles.badgesCard}>
+            <View style={styles.cardHeader}>
+              <View>
+                <Text style={styles.cardTitle}>Badges</Text>
+                <Text style={styles.badgesSub}>
+                  Feature up to {MAX_FEATURED_BADGES} earned sustainability badges.
+                </Text>
+              </View>
+              <AppPressable
+                variant="ghost"
+                style={styles.dropdownButton}
+                onPress={() => setBadgePickerOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="See all badges"
+              >
+                <Text style={styles.dropdownButtonText}>See all</Text>
+              </AppPressable>
+            </View>
+            <View style={styles.badgeRow}>
+              {featuredBadgeSlots.map((badge, index) =>
+                badge ? (
+                  <BadgeCard
+                    key={badge.id}
+                    badge={badge}
+                    compact
+                    selected={selectedBadgeIds.includes(badge.id)}
+                  />
+                ) : (
+                  <BadgeCard key={`badge-slot-${index}`} placeholder compact />
+                )
+              )}
+            </View>
+            <Text style={styles.badgesFooter}>
+              {earnedBadges.length} earned badge{earnedBadges.length === 1 ? '' : 's'} total
+            </Text>
           </View>
 
           <View style={styles.leaderboardCard}>
@@ -356,6 +598,73 @@ export default function GoalsScreen({ accessToken, bottomPadding = 0 }) {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={badgePickerOpen}
+        animationType="slide"
+        onRequestClose={() => setBadgePickerOpen(false)}
+      >
+        <View style={styles.badgePickerScreen}>
+          <View style={[styles.badgePickerHeader, { paddingTop: Math.max(insets.top, 18) + 10 }]}>
+            <View>
+              <Text style={styles.title}>Badges</Text>
+              <Text style={styles.badgePickerSub}>
+                Select up to {MAX_FEATURED_BADGES} earned badges to feature on your Goals page.
+              </Text>
+            </View>
+            <AppPressable
+              variant="ghost"
+              style={styles.goalEditButton}
+              onPress={() => setBadgePickerOpen(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Done selecting badges"
+            >
+              <Text style={styles.goalEditButtonText}>Done</Text>
+            </AppPressable>
+          </View>
+
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[styles.badgePickerContent, { paddingBottom: Math.max(bottomPadding, 20) + 20 }]}
+          >
+            <Text style={styles.badgePickerCount}>
+              {selectedBadgeIds.length}/{MAX_FEATURED_BADGES} featured
+            </Text>
+            <View style={styles.badgeGrid}>
+              {badges.map((badge) => {
+                const selected = selectedBadgeIds.includes(badge.id);
+                const locked = !badge.earned;
+                return (
+                  <AppPressable
+                    key={badge.id}
+                    variant="ghost"
+                    style={[
+                      styles.badgeGridCell,
+                      selected && styles.badgeGridCellSelected,
+                      locked && styles.badgeGridCellLocked,
+                    ]}
+                    onPress={() => {
+                      if (locked) return;
+                      setSelectedBadgeIds((prev) => {
+                        if (prev.includes(badge.id)) {
+                          return prev.filter((id) => id !== badge.id);
+                        }
+                        if (prev.length >= MAX_FEATURED_BADGES) return prev;
+                        return [...prev, badge.id];
+                      });
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected, disabled: locked }}
+                    accessibilityLabel={`${badge.title}${locked ? ', locked' : selected ? ', selected' : ''}`}
+                  >
+                    <BadgeCard badge={badge} selected={selected} locked={locked} />
+                  </AppPressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -464,6 +773,127 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
   },
+  badgesCard: {
+    marginTop: 18,
+    marginHorizontal: 16,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 22,
+    padding: 18,
+  },
+  badgesSub: {
+    color: C.muted,
+    fontSize: 13,
+    marginTop: 4,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  badgeCard: {
+    flex: 1,
+    minWidth: 0,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 18,
+    padding: 12,
+  },
+  badgeCardCompact: {
+    minHeight: 148,
+  },
+  badgeCardLocked: {
+    opacity: 0.58,
+  },
+  badgeCardSelected: {
+    borderColor: 'rgba(0,200,150,0.34)',
+    backgroundColor: 'rgba(0,200,150,0.08)',
+  },
+  badgeIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeTitle: {
+    color: C.text,
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 12,
+  },
+  badgeTitleLocked: {
+    color: C.muted,
+  },
+  badgeDescription: {
+    color: C.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 6,
+  },
+  badgeDescriptionLocked: {
+    color: C.faint,
+  },
+  badgeLockLabel: {
+    color: C.faint,
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginTop: 10,
+  },
+  badgeSelectedPill: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,200,150,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,200,150,0.24)',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  badgeSelectedPillText: {
+    color: C.brand,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  badgePlaceholderCard: {
+    borderStyle: 'dashed',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  badgePlaceholderIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: C.line,
+  },
+  badgePlaceholderTitle: {
+    color: C.text,
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 12,
+  },
+  badgePlaceholderBody: {
+    color: C.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 6,
+  },
+  badgesFooter: {
+    color: C.faint,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 14,
+  },
   leaderboardCard: {
     marginTop: 18,
     marginHorizontal: 16,
@@ -545,6 +975,52 @@ const styles = StyleSheet.create({
   stateTitle: { color: C.text, fontSize: 18, fontWeight: '700' },
   stateText: { color: C.muted, fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 10 },
   errorText: { color: '#ff9b9b', fontSize: 14, lineHeight: 21, textAlign: 'center' },
+  badgePickerScreen: {
+    flex: 1,
+    backgroundColor: C.bg,
+  },
+  badgePickerHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  badgePickerSub: {
+    color: C.muted,
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 4,
+    maxWidth: 260,
+  },
+  badgePickerContent: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  badgePickerCount: {
+    color: C.brand,
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 12,
+  },
+  badgeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  badgeGridCell: {
+    width: '48%',
+  },
+  badgeGridCellSelected: {
+    borderRadius: 18,
+  },
+  badgeGridCellLocked: {
+    borderRadius: 18,
+  },
   modalRoot: { flex: 1, justifyContent: 'center', paddingHorizontal: 24 },
   modalBackdrop: {
     ...StyleSheet.absoluteFillObject,
