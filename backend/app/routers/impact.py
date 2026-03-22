@@ -29,6 +29,17 @@ def get_impact(
     rides_shared = len(completed)
 
     today = datetime.now(timezone.utc).date()
+    start_of_week = today - timedelta(days=today.weekday())
+    current_week_co2 = 0.0
+    for r in completed:
+        ref = r.completed_at or r.created_at
+        if ref is None:
+            continue
+        if ref.tzinfo is None:
+            ref = ref.replace(tzinfo=timezone.utc)
+        if ref.date() >= start_of_week:
+            current_week_co2 += float(r.co2_kg or 0)
+
     weekly: list[dict] = []
     for i in range(6, -1, -1):
         day = today - timedelta(days=i)
@@ -55,6 +66,7 @@ def get_impact(
     return ImpactResponse(
         total_saved=round(total_saved, 2),
         total_co2_kg=round(total_co2, 2),
+        current_week_co2_kg=round(current_week_co2, 2),
         rides_shared=rides_shared,
         weekly=weekly,
     )

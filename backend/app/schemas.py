@@ -151,6 +151,7 @@ class RidesResponse(BaseModel):
 class ImpactResponse(BaseModel):
     total_saved: float
     total_co2_kg: float
+    current_week_co2_kg: float = 0
     rides_shared: int
     weekly: list[dict[str, Any]]
 

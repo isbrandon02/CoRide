@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AppPressable from '../components/AppPressable';
-import { getLeaderboard } from '../src/auth';
+import { getImpact, getLeaderboard } from '../src/auth';
 
 const C = {
   bg: '#0a0a0f',
@@ -25,6 +25,7 @@ const METRICS = [
   { key: 'total_co2_kg', label: 'CO2 Saved' },
   { key: 'total_saved', label: 'Money Saved' },
 ];
+const DEFAULT_WEEKLY_CO2_GOAL_KG = 6;
 
 function initialsFromName(name, email) {
   const raw = String(name || email || '?').trim();
@@ -56,6 +57,11 @@ export default function GoalsScreen({ accessToken, bottomPadding = 0 }) {
   const [error, setError] = useState('');
   const [metric, setMetric] = useState('score');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [weeklyCo2Saved, setWeeklyCo2Saved] = useState(0);
+  const [weeklyRides, setWeeklyRides] = useState(0);
+  const [weeklyGoalKg, setWeeklyGoalKg] = useState(DEFAULT_WEEKLY_CO2_GOAL_KG);
+  const [goalDraft, setGoalDraft] = useState(String(DEFAULT_WEEKLY_CO2_GOAL_KG));
+  const [goalEditorOpen, setGoalEditorOpen] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -89,7 +95,40 @@ export default function GoalsScreen({ accessToken, bottomPadding = 0 }) {
     };
   }, [accessToken]);
 
+  useEffect(() => {
+    let live = true;
+    if (!accessToken) {
+      setWeeklyCo2Saved(0);
+      setWeeklyRides(0);
+      return () => {
+        live = false;
+      };
+    }
+
+    getImpact(accessToken)
+      .then((data) => {
+        if (!live) return;
+        const rides = Array.isArray(data.weekly)
+          ? data.weekly.reduce((sum, row) => sum + Number(row?.rides ?? 0), 0)
+          : 0;
+        setWeeklyCo2Saved(Number(data.current_week_co2_kg ?? 0));
+        setWeeklyRides(rides);
+      })
+      .catch(() => {
+        if (!live) return;
+        setWeeklyCo2Saved(0);
+        setWeeklyRides(0);
+      });
+
+    return () => {
+      live = false;
+    };
+  }, [accessToken]);
+
   const selectedMetric = METRICS.find((item) => item.key === metric) ?? METRICS[0];
+  const rawProgress = Math.max(0, weeklyCo2Saved / weeklyGoalKg);
+  const progress = Math.min(rawProgress, 1);
+  const co2Remaining = Math.max(weeklyGoalKg - weeklyCo2Saved, 0);
 
   const sortedLeaderboard = useMemo(() => {
     const list = [...leaderboard];
@@ -114,6 +153,42 @@ export default function GoalsScreen({ accessToken, bottomPadding = 0 }) {
           <Text style={styles.sub}>
             Compare how coworkers are stacking up on shared commuting impact.
           </Text>
+
+          <View style={styles.progressCard}>
+            <View style={styles.progressHeader}>
+              <View>
+                <Text style={styles.progressEyebrow}>This Week's CO2 Goal</Text>
+                <Text style={styles.progressTitle}>
+                  {weeklyCo2Saved.toFixed(1)} kg of {weeklyGoalKg.toFixed(1)} kg saved
+                </Text>
+              </View>
+              <AppPressable
+                variant="ghost"
+                style={styles.goalEditButton}
+                onPress={() => {
+                  setGoalDraft(String(weeklyGoalKg));
+                  setGoalEditorOpen(true);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Edit weekly goal"
+              >
+                <Text style={styles.goalEditButtonText}>Edit</Text>
+                <Ionicons name="create-outline" size={15} color={C.text} />
+              </AppPressable>
+            </View>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+              <Text style={styles.progressBarText}>{Math.round(rawProgress * 100)}%</Text>
+            </View>
+            <Text style={styles.progressSub}>
+              {co2Remaining > 0
+                ? `${co2Remaining.toFixed(1)} kg to go this week`
+                : 'Goal reached for this week'}
+            </Text>
+            <Text style={styles.progressMeta}>
+              {weeklyRides} shared ride{weeklyRides === 1 ? '' : 's'} contributing so far
+            </Text>
+          </View>
 
           <View style={styles.leaderboardCard}>
             <View style={styles.cardHeader}>
@@ -213,6 +288,53 @@ export default function GoalsScreen({ accessToken, bottomPadding = 0 }) {
             </View>
           </View>
         </Modal>
+
+        <Modal
+          visible={goalEditorOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setGoalEditorOpen(false)}
+        >
+          <View style={styles.modalRoot}>
+            <AppPressable variant="none" style={styles.modalBackdrop} onPress={() => setGoalEditorOpen(false)} />
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Weekly CO2 Goal</Text>
+              <Text style={styles.modalBody}>
+                Enter the number of kilograms of CO2 you want to save each week.
+              </Text>
+              <TextInput
+                value={goalDraft}
+                onChangeText={(text) => setGoalDraft(text.replace(/[^0-9.]/g, ''))}
+                keyboardType="decimal-pad"
+                placeholder="6"
+                placeholderTextColor={C.faint}
+                style={styles.goalInput}
+              />
+              <View style={styles.modalActions}>
+                <AppPressable
+                  variant="ghost"
+                  style={styles.modalButton}
+                  onPress={() => setGoalEditorOpen(false)}
+                >
+                  <Text style={styles.modalButtonText}>Cancel</Text>
+                </AppPressable>
+                <AppPressable
+                  variant="ghost"
+                  style={[styles.modalButton, styles.modalButtonPrimary]}
+                  onPress={() => {
+                    const nextGoal = Number.parseFloat(goalDraft);
+                    if (Number.isFinite(nextGoal) && nextGoal > 0) {
+                      setWeeklyGoalKg(nextGoal);
+                    }
+                    setGoalEditorOpen(false);
+                  }}
+                >
+                  <Text style={[styles.modalButtonText, styles.modalButtonPrimaryText]}>Save</Text>
+                </AppPressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -231,6 +353,83 @@ const styles = StyleSheet.create({
   },
   title: { color: C.text, fontSize: 30, fontWeight: '800', marginTop: 8 },
   sub: { color: C.muted, fontSize: 14, lineHeight: 21, marginTop: 8 },
+  progressCard: {
+    marginTop: 18,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 22,
+    padding: 18,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  goalEditButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  goalEditButtonText: {
+    color: C.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  progressEyebrow: {
+    color: C.brand,
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  progressTitle: {
+    color: C.text,
+    fontSize: 22,
+    fontWeight: '800',
+    marginTop: 6,
+    lineHeight: 28,
+  },
+  progressTrack: {
+    height: 20,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0,200,150,0.18)',
+    justifyContent: 'center',
+  },
+  progressFill: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 999,
+    backgroundColor: C.brand,
+  },
+  progressBarText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+    textAlign: 'center',
+    zIndex: 1,
+  },
+  progressSub: {
+    color: C.text,
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 12,
+  },
+  progressMeta: {
+    color: C.muted,
+    fontSize: 13,
+    marginTop: 6,
+  },
   leaderboardCard: {
     marginTop: 18,
     backgroundColor: C.card,
@@ -324,6 +523,43 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   modalTitle: { color: C.text, fontSize: 18, fontWeight: '800', marginBottom: 10 },
+  modalBody: { color: C.muted, fontSize: 14, lineHeight: 21, marginBottom: 14 },
+  goalInput: {
+    color: C.text,
+    fontSize: 16,
+    fontWeight: '700',
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  modalButton: {
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  modalButtonPrimary: {
+    backgroundColor: C.brandSoft,
+    borderColor: 'rgba(0,200,150,0.28)',
+  },
+  modalButtonText: {
+    color: C.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  modalButtonPrimaryText: {
+    color: C.brand,
+  },
   modalOption: {
     flexDirection: 'row',
     alignItems: 'center',
