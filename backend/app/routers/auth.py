@@ -3,7 +3,9 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database import get_db
+from app.demo_seed import ensure_sample_rides_for_users_without_rides
 from app.models import User
 from app.schemas import SignupResponse, Token, UserCreate, UserOut
 from app.security import (
@@ -34,6 +36,9 @@ def signup(body: UserCreate, db: Session = Depends(get_db)) -> SignupResponse:
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    if get_settings().SEED_DEMO_ACCOUNTS:
+        ensure_sample_rides_for_users_without_rides()
 
     return SignupResponse(
         message="Account created. You can sign in now.",

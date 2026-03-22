@@ -8,7 +8,7 @@ from pathlib import Path
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
@@ -171,9 +171,51 @@ def _hobbies_with_meta(row: dict) -> str:
     return base
 
 
-def seed_demo_rides() -> tuple[int, int]:
+def _insert_demo_rides_from_json(db: Session, spec: list, now: datetime) -> int:
+    users_list = db.query(User).all()
+    users = {u.email.strip().lower(): u for u in users_list}
+    created = 0
+    for row in spec:
+        re = row["requester_email"].strip().lower()
+        de = row["driver_email"].strip().lower()
+        ur = users.get(re)
+        ud = users.get(de)
+        if ur is None or ud is None:
+            logger.warning("Demo ride skipped: unknown user(s) %s / %s", re, de)
+            continue
+
+        st = (row.get("status") or "").strip().lower()
+        if st not in {"pending", "accepted", "declined", "cancelled", "completed"}:
+            logger.warning("Demo ride skipped: invalid status %s", st)
+            continue
+
+            # Positive = days in the past; negative = days in the future (upcoming this week in the UI).
+            created_days = int(row.get("created_days_ago", 0))
+            created_at = now - timedelta(days=created_days)
+
+        rid = Ride(
+            requester_id=ur.id,
+            driver_id=ud.id,
+            status=st,
+            note=(row.get("note") or "").strip(),
+            created_at=created_at,
+        )
+        if st == "completed":
+            comp_days = int(row.get("completed_days_ago", created_days))
+            rid.completed_at = now - timedelta(days=comp_days)
+            rid.saved_usd = float(row.get("saved_usd", 4.5))
+            rid.co2_kg = float(row.get("co2_kg", 2.3))
+
+        db.add(rid)
+        created += 1
+    return created
+
+
+def seed_demo_rides(*, replace: bool = False) -> tuple[int, int]:
     """
-    Insert demo rides from data/demo_rides.json when the rides table is empty.
+    Insert demo rides from data/demo_rides.json when the rides table is empty,
+    or when replace=True (delete all rides first, then insert).
+
     Skips rows if requester or driver email is missing from the DB.
     Returns (inserted_count, 0).
     """
@@ -191,48 +233,18 @@ def seed_demo_rides() -> tuple[int, int]:
     db: Session = SessionLocal()
     created = 0
     try:
-        existing = db.scalar(select(func.count()).select_from(Ride)) or 0
-        if existing > 0:
-            logger.debug("Demo rides seed skipped: rides table already has %s row(s)", existing)
-            return (0, 0)
+        if replace:
+            db.execute(delete(Ride))
+            db.commit()
+            logger.info("Demo rides: cleared all rows (replace)")
+        else:
+            existing = db.scalar(select(func.count()).select_from(Ride)) or 0
+            if existing > 0:
+                logger.debug("Demo rides seed skipped: rides table already has %s row(s)", existing)
+                return (0, 0)
 
-        users_list = db.query(User).all()
-        users = {u.email.strip().lower(): u for u in users_list}
         now = datetime.now(timezone.utc)
-
-        for row in spec:
-            re = row["requester_email"].strip().lower()
-            de = row["driver_email"].strip().lower()
-            ur = users.get(re)
-            ud = users.get(de)
-            if ur is None or ud is None:
-                logger.warning("Demo ride skipped: unknown user(s) %s / %s", re, de)
-                continue
-
-            st = (row.get("status") or "").strip().lower()
-            if st not in {"pending", "accepted", "declined", "cancelled", "completed"}:
-                logger.warning("Demo ride skipped: invalid status %s", st)
-                continue
-
-            created_days = int(row.get("created_days_ago", 0))
-            created_at = now - timedelta(days=created_days)
-
-            rid = Ride(
-                requester_id=ur.id,
-                driver_id=ud.id,
-                status=st,
-                note=(row.get("note") or "").strip(),
-                created_at=created_at,
-            )
-            if st == "completed":
-                comp_days = int(row.get("completed_days_ago", created_days))
-                rid.completed_at = now - timedelta(days=comp_days)
-                rid.saved_usd = float(row.get("saved_usd", 4.5))
-                rid.co2_kg = float(row.get("co2_kg", 2.3))
-
-            db.add(rid)
-            created += 1
-
+        created = _insert_demo_rides_from_json(db, spec, now)
         if created:
             db.commit()
     except Exception:
@@ -244,6 +256,174 @@ def seed_demo_rides() -> tuple[int, int]:
     if created:
         logger.info("Demo rides: %s row(s) inserted", created)
     return (created, 0)
+
+
+def _ride_count_for_user(db: Session, user_id: int) -> int:
+    return (
+        db.scalar(
+            select(func.count())
+            .select_from(Ride)
+            .where(or_(Ride.requester_id == user_id, Ride.driver_id == user_id))
+        )
+        or 0
+    )
+
+
+def ensure_sample_rides_for_users_without_rides() -> int:
+    """
+    For each user with no rides yet, add a few sample rows with other members so
+    Activity and Impact show data (typical when using a personal email while demo
+    rides in JSON only reference seeded @example.com accounts).
+
+    Idempotent: skips anyone who already has at least one ride.
+    """
+    db: Session = SessionLocal()
+    added = 0
+    try:
+        now = datetime.now(timezone.utc)
+        users = list(db.scalars(select(User).order_by(User.id)).all())
+        if len(users) < 2:
+            return 0
+
+        for u in users:
+            if _ride_count_for_user(db, u.id) > 0:
+                continue
+            others = [x for x in users if x.id != u.id]
+            p1 = others[0]
+            p2 = others[1] if len(others) > 1 else others[0]
+
+            db.add(
+                Ride(
+                    requester_id=u.id,
+                    driver_id=p1.id,
+                    status="completed",
+                    note="Morning carpool — split gas on 101.",
+                    created_at=now - timedelta(days=16),
+                    completed_at=now - timedelta(days=16),
+                    saved_usd=4.6,
+                    co2_kg=2.3,
+                )
+            )
+            db.add(
+                Ride(
+                    requester_id=p2.id,
+                    driver_id=u.id,
+                    status="completed",
+                    note="Evening return; light traffic.",
+                    created_at=now - timedelta(days=12),
+                    completed_at=now - timedelta(days=12),
+                    saved_usd=5.1,
+                    co2_kg=2.6,
+                )
+            )
+            db.add(
+                Ride(
+                    requester_id=u.id,
+                    driver_id=p1.id,
+                    status="accepted",
+                    note="Wed this week — east lot ~8:10; split toll.",
+                    created_at=now + timedelta(days=3, hours=1),
+                )
+            )
+            db.add(
+                Ride(
+                    requester_id=u.id,
+                    driver_id=p2.id,
+                    status="pending",
+                    note="Friday carpool on 101 — flexible on departure.",
+                    created_at=now + timedelta(days=1, hours=2),
+                )
+            )
+            db.add(
+                Ride(
+                    requester_id=p1.id,
+                    driver_id=u.id,
+                    status="pending",
+                    note="Thursday eve pickup — ping me when you're free.",
+                    created_at=now + timedelta(days=2, hours=5),
+                )
+            )
+            added += 5
+
+        if added:
+            db.commit()
+            logger.info("Sample rides: %s row(s) added for users with no activity yet", added)
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+    return added
+
+
+def ensure_upcoming_week_sample_rides() -> int:
+    """
+    If a user already has ride history but no pending/accepted ride with a future
+    created_at, add a couple of sample upcoming rows so Activity shows "this week".
+
+    Idempotent while at least one such future-dated row exists for that user.
+    """
+    db: Session = SessionLocal()
+    added = 0
+    try:
+        now = datetime.now(timezone.utc)
+        users = list(db.scalars(select(User).order_by(User.id)).all())
+        if len(users) < 2:
+            return 0
+
+        for u in users:
+            if _ride_count_for_user(db, u.id) == 0:
+                continue
+            fut = (
+                db.scalar(
+                    select(func.count())
+                    .select_from(Ride)
+                    .where(
+                        or_(Ride.requester_id == u.id, Ride.driver_id == u.id),
+                        Ride.status.in_(("pending", "accepted")),
+                        Ride.created_at > now,
+                    )
+                )
+                or 0
+            )
+            if fut > 0:
+                continue
+
+            others = [x for x in users if x.id != u.id]
+            p1 = others[0]
+            p2 = others[1] if len(others) > 1 else others[0]
+
+            db.add(
+                Ride(
+                    requester_id=u.id,
+                    driver_id=p1.id,
+                    status="accepted",
+                    note="This week — usual lot ~8:10; split gas.",
+                    created_at=now + timedelta(days=2, hours=2),
+                )
+            )
+            db.add(
+                Ride(
+                    requester_id=p2.id,
+                    driver_id=u.id,
+                    status="pending",
+                    note="Later this week ride back — OK to swing by your office?",
+                    created_at=now + timedelta(days=5, hours=1),
+                )
+            )
+            added += 2
+
+        if added:
+            db.commit()
+            logger.info("Upcoming-week sample rides: %s row(s) added", added)
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+    return added
 
 
 def seed_demo_chats() -> tuple[int, int]:
