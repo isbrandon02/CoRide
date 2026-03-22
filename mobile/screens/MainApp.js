@@ -383,6 +383,28 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
   const notifCount =
     rideNotifications.incomingAsDriver.length + rideNotifications.acceptedAsPassenger.length;
 
+  const pendingIncomingRide = rideNotifications.incomingAsDriver[0] ?? null;
+  const pendingOutgoingMatch =
+    pendingDriverIds.length > 0 ? matches.find((m) => pendingDriverIds.includes(m.id)) ?? top : null;
+  const homeBannerMode = pendingIncomingRide ? 'incoming' : pendingOutgoingMatch ? 'outgoing' : 'commute';
+  const homeBannerName =
+    homeBannerMode === 'incoming'
+      ? pendingIncomingRide?.other_user?.name || 'a coworker'
+      : homeBannerMode === 'outgoing'
+        ? pendingOutgoingMatch?.name || 'a coworker'
+        : commute?.name || '';
+  const homeBannerSub =
+    homeBannerMode === 'incoming'
+      ? [
+          formatNotifWhen(pendingIncomingRide?.created_at),
+          pendingIncomingRide?.other_user?.email || '',
+        ]
+          .filter(Boolean)
+          .join(' · ') || 'Open Activity to accept or decline'
+      : commute
+        ? [commute.time, commute.area].filter(Boolean).join(' · ') || 'Carpool match from your profile'
+        : 'Open Find to request a ride';
+
   function formatNotifWhen(iso) {
     if (!iso) return '';
     const d = new Date(iso);
@@ -519,7 +541,10 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
         variant="solid"
         style={s.alert}
         onPress={() => {
-          if (pendingDriverIds.length > 0) {
+          if (homeBannerMode === 'incoming' && pendingIncomingRide?.other_user?.id != null) {
+            setRidesFocusOtherUserId(String(pendingIncomingRide.other_user.id));
+            setTab('rides');
+          } else if (homeBannerMode === 'outgoing' && pendingDriverIds.length > 0) {
             const matchDriver = matches.find((m) => pendingDriverIds.includes(m.id));
             setRidesFocusOtherUserId(String(matchDriver?.id ?? pendingDriverIds[0]));
             setTab('rides');
@@ -529,25 +554,33 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
         }}
         android_ripple={{ color: 'rgba(0,0,0,0.14)' }}
         accessibilityRole="button"
-        accessibilityHint={pendingDriverIds.length ? 'Opens Activity' : 'Opens Find'}
+        accessibilityHint={homeBannerMode === 'commute' ? 'Opens Find' : 'Opens Activity'}
       >
         <View style={s.alertRow}>
           <View style={s.alertBody}>
-            <Text style={s.alertOver}>{pendingDriverIds.length ? 'Ride requested' : 'Your commute'}</Text>
+            <Text style={s.alertOver}>
+              {homeBannerMode === 'incoming'
+                ? 'Needs your response'
+                : homeBannerMode === 'outgoing'
+                  ? 'Ride requested'
+                  : 'Your commute'}
+            </Text>
             <Text style={s.alertTitle}>
-              {commute
-                ? `${pendingDriverIds.length ? 'Waiting on' : 'Best match:'} ${commute.name}`
-                : 'No ride lined up yet'}
+              {homeBannerMode === 'incoming'
+                ? `${homeBannerName} is waiting on you`
+                : homeBannerMode === 'outgoing'
+                  ? `Waiting on ${homeBannerName}`
+                  : commute
+                    ? `Best match: ${homeBannerName}`
+                    : 'No ride lined up yet'}
             </Text>
-            <Text style={s.alertSub}>
-              {commute
-                ? [commute.time, commute.area].filter(Boolean).join(' · ') || 'Carpool match from your profile'
-                : 'Open Find to request a ride'}
-            </Text>
-            {pendingDriverIds.length ? (
+            <Text style={s.alertSub}>{homeBannerSub}</Text>
+            {homeBannerMode !== 'commute' ? (
               <View style={s.rowWrap}>
                 <View style={s.pill}>
-                  <Text style={s.pillText}>Pending confirmation</Text>
+                  <Text style={s.pillText}>
+                    {homeBannerMode === 'incoming' ? 'Review request' : 'Pending confirmation'}
+                  </Text>
                 </View>
               </View>
             ) : null}
