@@ -40,6 +40,10 @@ def _to_profile_out(user: User, db: Session) -> ProfileOut:
     profile = db.get(UserProfile, user.id)
     vehicle = db.get(UserVehicle, user.id)
     return ProfileOut(
+        name=profile.name if profile else "",
+        age=profile.age if profile else None,
+        gender=profile.gender if profile else "",
+        status=profile.status if profile else "",
         home_address=profile.home_address if profile else "",
         office_address=profile.office_address if profile else "",
         hobbies=profile.hobbies if profile else "",
@@ -68,6 +72,10 @@ def save_onboarding(
     profile = db.get(UserProfile, current.id)
     if profile is None:
         profile = UserProfile(user_id=current.id)
+    profile.name = body.name.strip()
+    profile.age = body.age
+    profile.gender = body.gender.strip()
+    profile.status = body.status.strip()
     profile.home_address = body.home_address.strip()
     profile.office_address = body.office_address.strip()
     profile.hobbies = body.hobbies.strip()

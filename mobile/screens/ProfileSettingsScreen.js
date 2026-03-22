@@ -250,6 +250,10 @@ export default function ProfileSettingsScreen({
     try {
       const payload = buildProfilePayload();
       const data = await saveOnboarding(accessToken, {
+        name: payload.name,
+        age: payload.age ? Number(payload.age) : null,
+        gender: payload.gender,
+        status: payload.status,
         home_address: payload.home_address,
         office_address: payload.office_address,
         hobbies: payload.hobbies,
@@ -258,11 +262,14 @@ export default function ProfileSettingsScreen({
         work_schedule: payload.work_schedule,
         vehicle: payload.vehicle,
       });
-      setSavedProfile((prev) => ({
-        ...(prev ?? {}),
-        ...payload,
+      setSavedProfile({
+        ...(data ?? {}),
+        name: data?.name ?? payload.name,
+        age: data?.age ?? (payload.age ? Number(payload.age) : null),
+        gender: data?.gender ?? payload.gender,
+        status: data?.status ?? payload.status,
         avatar_url: data?.avatar_url ?? avatarUrl.trim(),
-      }));
+      });
       setEditMode(false);
       onSaveSuccess?.();
     } catch (e) {

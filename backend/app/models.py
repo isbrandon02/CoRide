@@ -33,6 +33,10 @@ class UserProfile(Base):
     __tablename__ = "user_profiles"
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    name: Mapped[str] = mapped_column(Text, default="")
+    age: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    gender: Mapped[str] = mapped_column(String(64), default="")
+    status: Mapped[str] = mapped_column(String(64), default="")
     home_address: Mapped[str] = mapped_column(Text, default="")
     office_address: Mapped[str] = mapped_column(Text, default="")
     hobbies: Mapped[str] = mapped_column(Text, default="")

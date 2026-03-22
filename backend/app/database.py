@@ -116,6 +116,14 @@ def migrate_sqlite_schema() -> None:
             prows = []
         if prows:
             pcols = {r[1] for r in prows}
+            if "name" not in pcols:
+                conn.execute(text("ALTER TABLE user_profiles ADD COLUMN name TEXT NOT NULL DEFAULT ''"))
+            if "age" not in pcols:
+                conn.execute(text("ALTER TABLE user_profiles ADD COLUMN age INTEGER"))
+            if "gender" not in pcols:
+                conn.execute(text("ALTER TABLE user_profiles ADD COLUMN gender VARCHAR(64) NOT NULL DEFAULT ''"))
+            if "status" not in pcols:
+                conn.execute(text("ALTER TABLE user_profiles ADD COLUMN status VARCHAR(64) NOT NULL DEFAULT ''"))
             if "hobbies" not in pcols:
                 conn.execute(
                     text("ALTER TABLE user_profiles ADD COLUMN hobbies TEXT NOT NULL DEFAULT ''")

@@ -301,3 +301,22 @@ export async function sendChatMessage(accessToken, conversationId, body) {
   }
   return data;
 }
+
+/**
+ * @returns {Promise<{ id: number, title: string }>}
+ */
+export async function renameChatConversation(accessToken, conversationId, title) {
+  const res = await apiFetch(`${API_BASE_URL}/chats/${conversationId}`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ title: (title ?? '').trim() }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(parseErrorDetail(data, 'Could not rename conversation'));
+  }
+  return data;
+}

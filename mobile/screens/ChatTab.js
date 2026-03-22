@@ -12,7 +12,12 @@ import {
 } from 'react-native';
 
 import AppPressable from '../components/AppPressable';
-import { getChatConversations, getChatMessages, sendChatMessage } from '../src/auth';
+import {
+  getChatConversations,
+  getChatMessages,
+  renameChatConversation,
+  sendChatMessage,
+} from '../src/auth';
 
 const C = {
   panel: '#111118',
@@ -295,19 +300,26 @@ export function ChatThread({
   accessToken,
   conversationId,
   threadTitle = 'Chat',
+  isGroup = false,
   onBack,
   bottomPadding,
   onMessagesChanged,
+  onConversationRenamed,
 }) {
   const [rows, setRows] = useState([]);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
   const [sendBusy, setSendBusy] = useState(false);
+  const [renameMode, setRenameMode] = useState(false);
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(threadTitle || '');
   const listRef = useRef(null);
 
   useEffect(() => {
     setDraft('');
     setRows([]);
+    setRenameMode(false);
+    setTitleDraft(threadTitle || '');
     if (!accessToken || !conversationId) {
       setLoading(false);
       return;
@@ -329,7 +341,7 @@ export function ChatThread({
     return () => {
       live = false;
     };
-  }, [accessToken, conversationId]);
+  }, [accessToken, conversationId, threadTitle]);
 
   const scrollEnd = useCallback(() => {
     requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
@@ -351,6 +363,22 @@ export function ChatThread({
       })
       .catch(() => {})
       .finally(() => setSendBusy(false));
+  };
+
+  const submitRename = () => {
+    const nextTitle = titleDraft.trim();
+    if (!accessToken || !conversationId || !isGroup || !nextTitle || renameBusy) return;
+    setRenameBusy(true);
+    renameChatConversation(accessToken, conversationId, nextTitle)
+      .then((data) => {
+        const finalTitle = String(data.title || nextTitle);
+        setTitleDraft(finalTitle);
+        setRenameMode(false);
+        onConversationRenamed?.({ id: String(data.id ?? conversationId), title: finalTitle });
+        onMessagesChanged?.();
+      })
+      .catch(() => {})
+      .finally(() => setRenameBusy(false));
   };
 
   const title = threadTitle || 'Chat';
@@ -394,10 +422,36 @@ export function ChatThread({
         <AppPressable variant="link" onPress={onBack} hitSlop={12} style={styles.backHit}>
           <Text style={styles.back}>‹ Back</Text>
         </AppPressable>
-        <Text style={styles.threadTitle} numberOfLines={1}>
-          {title}
-        </Text>
-        <View style={{ width: 56 }} />
+        {renameMode ? (
+          <TextInput
+            value={titleDraft}
+            onChangeText={setTitleDraft}
+            placeholder="Group name"
+            placeholderTextColor={C.faint}
+            style={styles.threadTitleInput}
+            autoFocus
+            editable={!renameBusy}
+            onSubmitEditing={submitRename}
+          />
+        ) : (
+          <Text style={styles.threadTitle} numberOfLines={1}>
+            {title}
+          </Text>
+        )}
+        {isGroup ? (
+          <AppPressable
+            variant="link"
+            onPress={renameMode ? submitRename : () => setRenameMode(true)}
+            style={styles.threadAction}
+            disabled={renameBusy}
+          >
+            <Text style={styles.threadActionText}>
+              {renameMode ? (renameBusy ? 'Saving' : 'Save') : 'Rename'}
+            </Text>
+          </AppPressable>
+        ) : (
+          <View style={{ width: 56 }} />
+        )}
       </View>
       {loading ? (
         <ActivityIndicator color={C.brand} style={{ marginTop: 24 }} />
@@ -511,6 +565,22 @@ const styles = StyleSheet.create({
   back: { color: C.muted, fontSize: 16, fontWeight: '600' },
   backHit: { justifyContent: 'center', paddingVertical: 4, paddingHorizontal: 4, minWidth: 48 },
   threadTitle: { flex: 1, textAlign: 'center', color: C.text, fontSize: 16, fontWeight: '700' },
+  threadTitleInput: {
+    flex: 1,
+    color: C.text,
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    borderWidth: 1,
+    borderColor: C.line,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginHorizontal: 8,
+  },
+  threadAction: { minWidth: 56, alignItems: 'flex-end', paddingRight: 4 },
+  threadActionText: { color: C.brand, fontSize: 13, fontWeight: '700' },
   threadList: { paddingHorizontal: 16, paddingTop: 12 },
   threadEmpty: { textAlign: 'center', color: C.faint, fontSize: 13, paddingVertical: 24 },
   msgRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-end', marginBottom: 12 },

@@ -41,6 +41,10 @@ class VehicleIn(BaseModel):
 
 
 class OnboardingPut(BaseModel):
+    name: str = Field(default="", max_length=200)
+    age: int | None = Field(default=None, ge=0, le=130)
+    gender: str = Field(default="", max_length=64)
+    status: str = Field(default="", max_length=64)
     home_address: str = Field(..., min_length=1, max_length=2000)
     office_address: str = Field(..., min_length=1, max_length=2000)
     hobbies: str = Field(default="", max_length=2000)
@@ -64,6 +68,10 @@ class VehicleOut(BaseModel):
 
 
 class ProfileOut(BaseModel):
+    name: str = ""
+    age: int | None = None
+    gender: str = ""
+    status: str = ""
     home_address: str
     office_address: str
     hobbies: str
@@ -141,6 +149,15 @@ class ChatDmCreate(BaseModel):
 
 class ChatDmOut(BaseModel):
     conversation_id: int
+    title: str
+
+
+class ChatConversationRename(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+
+
+class ChatConversationOut(BaseModel):
+    id: int
     title: str
 
 

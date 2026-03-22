@@ -310,7 +310,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
       }
       try {
         const dm = await openOrGetDm(accessToken, otherId);
-        setChatThread({ id: String(dm.conversation_id), title: dm.title });
+        setChatThread({ id: String(dm.conversation_id), title: dm.title, is_group: false });
         setChatSub('thread');
         setTab('chat');
       } catch (e) {
@@ -543,7 +543,7 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
             refreshKey={chatRefreshKey}
             bottomPadding={tabBarHeight}
             onOpenThread={(c) => {
-              setChatThread({ id: c.id, title: c.title });
+              setChatThread({ id: c.id, title: c.title, is_group: !!c.is_group });
               setChatSub('thread');
             }}
           />
@@ -553,11 +553,17 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
             accessToken={accessToken}
             conversationId={chatThread.id}
             threadTitle={chatThread.title}
+            isGroup={!!chatThread.is_group}
             bottomPadding={tabBarHeight}
             onBack={() => {
               setChatSub('list');
               setChatThread(null);
               setChatRefreshKey((k) => k + 1);
+            }}
+            onConversationRenamed={(updated) => {
+              setChatThread((current) =>
+                current && current.id === updated.id ? { ...current, title: updated.title } : current,
+              );
             }}
             onMessagesChanged={() => setChatRefreshKey((k) => k + 1)}
           />

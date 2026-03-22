@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import ChatConversation, ChatMessage, ChatParticipant, User, UserProfile
 from app.schemas import (
+    ChatConversationOut,
+    ChatConversationRename,
     ChatConversationsResponse,
     ChatConversationListItem,
     ChatDmCreate,
@@ -229,6 +231,30 @@ def list_messages(
 
     out = [_message_out(db, m, current.id) for m in msgs]
     return ChatMessagesResponse(messages=out)
+
+
+@router.patch("/{conversation_id}", response_model=ChatConversationOut)
+def rename_conversation(
+    conversation_id: int,
+    body: ChatConversationRename,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ChatConversationOut:
+    conv = db.get(ChatConversation, conversation_id)
+    if conv is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    participant_ids = _participant_ids(db, conversation_id)
+    if current.id not in participant_ids:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not in this conversation")
+    if len(participant_ids) <= 2:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only group chats can be renamed")
+
+    conv.title = body.title.strip()
+    db.add(conv)
+    db.commit()
+    db.refresh(conv)
+    return ChatConversationOut(id=conv.id, title=conv.title)
 
 
 @router.post("/{conversation_id}/messages", response_model=ChatMessageOut)
