@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Any
+
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -91,3 +94,40 @@ class MatchesResponse(BaseModel):
         default_factory=lambda: {"route_overlap": 0.6, "time_proximity": 0.4},
         description="Score = route_overlap * w1 + time_score * w2",
     )
+
+
+class RideCreate(BaseModel):
+    driver_id: int = Field(..., ge=1)
+    note: str = Field(default="", max_length=2000)
+
+
+class RidePatch(BaseModel):
+    status: str = Field(..., min_length=4, max_length=24)
+
+
+class RideOtherUserOut(BaseModel):
+    id: int
+    email: str
+    name: str
+
+
+class RideOut(BaseModel):
+    id: int
+    status: str
+    role: str
+    other_user: RideOtherUserOut
+    note: str
+    created_at: datetime
+    saved_usd: float | None = None
+    co2_kg: float | None = None
+
+
+class RidesResponse(BaseModel):
+    rides: list[RideOut]
+
+
+class ImpactResponse(BaseModel):
+    total_saved: float
+    total_co2_kg: float
+    rides_shared: int
+    weekly: list[dict[str, Any]]

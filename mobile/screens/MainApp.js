@@ -16,7 +16,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons';
 
 import AppPressable from '../components/AppPressable';
-import { createRideRequest, getImpact, getMatches, getRides } from '../src/auth';
+import { createRideRequest, getImpact, getMatches, getRides, patchRideStatus } from '../src/auth';
 import { ChatList, ChatThread } from './ChatTab';
 import ProfileSettingsScreen from './ProfileSettingsScreen';
 import RidesTab from './RidesTab';
@@ -149,6 +149,9 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
   const [sheet, setSheet] = useState(null);
   /** Driver user ids (string) with a pending request from you */
   const [pendingDriverIds, setPendingDriverIds] = useState([]);
+  /** Maps driver id string → ride id for pending requests you sent (for cancel from Find). */
+  const [pendingRideByDriverId, setPendingRideByDriverId] = useState({});
+  const [cancellingDriverId, setCancellingDriverId] = useState(null);
   const [ridesRefreshKey, setRidesRefreshKey] = useState(0);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [chatSub, setChatSub] = useState('list');
@@ -179,10 +182,13 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
         if (!live) return;
         const list = matchData.matches ?? [];
         setMatches(Array.isArray(list) ? list.map(normalizeMatch) : []);
-        const pending = (ridesData.rides ?? [])
-          .filter((r) => r.role === 'requester' && r.status === 'pending')
-          .map((r) => String(r.other_user.id));
-        setPendingDriverIds(pending);
+        const pendingRides = (ridesData.rides ?? []).filter(
+          (r) => r.role === 'requester' && r.status === 'pending',
+        );
+        setPendingDriverIds(pendingRides.map((r) => String(r.other_user.id)));
+        setPendingRideByDriverId(
+          Object.fromEntries(pendingRides.map((r) => [String(r.other_user.id), r.id])),
+        );
       } catch {
         setMatches([]);
       } finally {
@@ -256,6 +262,37 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
     [],
   );
 
+  const cancelPendingRide = useCallback(
+    (driverIdStr) => {
+      const rideId = pendingRideByDriverId[driverIdStr];
+      if (!accessToken || rideId == null) {
+        Alert.alert('Could not cancel', 'Request not found. Open Activity or try again in a moment.');
+        return;
+      }
+      Alert.alert('Cancel this request?', 'You can send a new request later from Find.', [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Cancel request',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setCancellingDriverId(driverIdStr);
+              try {
+                await patchRideStatus(accessToken, rideId, 'cancelled');
+                setRidesRefreshKey((k) => k + 1);
+              } catch (e) {
+                Alert.alert('Could not cancel', e instanceof Error ? e.message : String(e));
+              } finally {
+                setCancellingDriverId(null);
+              }
+            })();
+          },
+        },
+      ]);
+    },
+    [accessToken, pendingRideByDriverId],
+  );
+
   const confirm = async () => {
     if (!sheet || !accessToken) return;
     const driverId = Number(sheet.id);
@@ -265,8 +302,11 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
     }
     setConfirmLoading(true);
     try {
-      await createRideRequest(accessToken, { driver_id: driverId });
+      const data = await createRideRequest(accessToken, { driver_id: driverId });
       setPendingDriverIds((cur) => (cur.includes(sheet.id) ? cur : [sheet.id, ...cur]));
+      if (data?.id != null) {
+        setPendingRideByDriverId((prev) => ({ ...prev, [sheet.id]: data.id }));
+      }
       setRidesRefreshKey((k) => k + 1);
       setSheet(null);
       setTab('home');
@@ -451,6 +491,8 @@ function MainApp({ accessToken, accountEmail, displayName, onLogout }) {
             filters={filters}
             toggleFilter={toggleFilter}
             pendingDriverIds={pendingDriverIds}
+            cancellingDriverId={cancellingDriverId}
+            onCancelPendingRide={cancelPendingRide}
             setSheet={setSheet}
             setChatConvId={setChatConvId}
             setChatSub={setChatSub}
@@ -866,6 +908,19 @@ const s = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
+  cancelPrimary: {
+    flex: 1,
+    backgroundColor: 'rgba(255,80,80,0.1)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,80,80,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    minHeight: 48,
+  },
+  cancelPrimaryText: { color: '#ff8a80', fontSize: 15, fontWeight: '700', textAlign: 'center' },
   sheetConfirmBtn: {
     marginTop: 18,
     backgroundColor: C.brand,
@@ -966,6 +1021,8 @@ function FindMatchesList({
   filters,
   toggleFilter,
   pendingDriverIds,
+  cancellingDriverId,
+  onCancelPendingRide,
   setSheet,
   setChatConvId,
   setChatSub,
@@ -1063,13 +1120,14 @@ function FindMatchesList({
   const renderItem = useCallback(
     ({ item: m, index: i }) => {
       const done = pendingDriverIds.includes(m.id);
+      const cancelBusy = cancellingDriverId === m.id;
       const focused = findFocusId === m.id;
       const isTopMatch = m.id === shown[0]?.id;
       return (
         <View style={[s.match, isTopMatch && !focused && { borderColor: C.brand }, focused && s.matchFocused]}>
           <View style={s.between}>
             <Badge label={isTopMatch ? 'Top Match' : 'Driving tomorrow'} tone={isTopMatch ? 'brand' : 'gray'} />
-            {done ? <Badge label="Requested" tone="sky" /> : <Badge label={`${m.seats ?? 2} seats`} />}
+            {done ? <Badge label="Pending" tone="sky" /> : <Badge label={`${m.seats ?? 2} seats`} />}
           </View>
           <View style={[s.row, { marginHorizontal: 0, paddingHorizontal: 0 }]}>
             <Avatar initials={m.initials} color={m.color} size={48} />
@@ -1117,14 +1175,21 @@ function FindMatchesList({
             </View>
           </View>
           <View style={s.actions}>
-            <AppPressable
-              variant="primary"
-              disabled={done}
-              style={[s.primary, done && { opacity: 0.55 }]}
-              onPress={() => setSheet(m)}
-            >
-              <Text style={s.primaryText}>{done ? 'Ride Requested' : 'Request Ride'}</Text>
-            </AppPressable>
+            {done ? (
+              <AppPressable
+                variant="ghost"
+                disabled={cancelBusy}
+                style={[s.cancelPrimary, cancelBusy && { opacity: 0.55 }]}
+                onPress={() => onCancelPendingRide(m.id)}
+                accessibilityLabel="Cancel ride request"
+              >
+                <Text style={s.cancelPrimaryText}>{cancelBusy ? 'Cancelling…' : 'Cancel request'}</Text>
+              </AppPressable>
+            ) : (
+              <AppPressable variant="primary" style={s.primary} onPress={() => setSheet(m)}>
+                <Text style={s.primaryText}>Request Ride</Text>
+              </AppPressable>
+            )}
             <AppPressable
               variant="ghost"
               style={s.ghostBtnWide}
@@ -1140,7 +1205,17 @@ function FindMatchesList({
         </View>
       );
     },
-    [findFocusId, shown, pendingDriverIds, setSheet, setChatConvId, setChatSub, setTab],
+    [
+      findFocusId,
+      shown,
+      pendingDriverIds,
+      cancellingDriverId,
+      onCancelPendingRide,
+      setSheet,
+      setChatConvId,
+      setChatSub,
+      setTab,
+    ],
   );
 
   return (
@@ -1149,7 +1224,7 @@ function FindMatchesList({
       style={{ flex: 1 }}
       data={listData}
       keyExtractor={(item) => item.id}
-      extraData={`${findFocusId}-${pendingDriverIds.join(',')}`}
+      extraData={`${findFocusId}-${pendingDriverIds.join(',')}-${cancellingDriverId ?? ''}`}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
       ListHeaderComponent={listHeader}

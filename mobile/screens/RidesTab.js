@@ -1,5 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import AppPressable from '../components/AppPressable';
 import { getRides, patchRideStatus } from '../src/auth';
@@ -123,6 +131,17 @@ export default function RidesTab({ accessToken, bottomPadding, onPressFind, refr
     }
   }
 
+  function promptCancelRequest(rideId) {
+    Alert.alert('Cancel this request?', 'You can send a new request later from Find.', [
+      { text: 'Keep', style: 'cancel' },
+      {
+        text: 'Cancel request',
+        style: 'destructive',
+        onPress: () => respondToRequest(rideId, 'cancelled'),
+      },
+    ]);
+  }
+
   return (
     <ScrollView
       style={styles.flex}
@@ -205,6 +224,17 @@ export default function RidesTab({ accessToken, bottomPadding, onPressFind, refr
                     </View>
                   </View>
                   {ride.note ? <Text style={styles.riderHint}>{ride.note}</Text> : null}
+                  {ride.status === 'pending' && ride.role === 'requester' ? (
+                    <Pressable
+                      style={[styles.cancelReqRow, actingId === ride.id && { opacity: 0.55 }]}
+                      onPress={() => promptCancelRequest(ride.id)}
+                      disabled={actingId === ride.id}
+                      accessibilityRole="button"
+                      accessibilityLabel="Cancel this ride request"
+                    >
+                      <Text style={styles.cancelReqTxt}>Cancel request</Text>
+                    </Pressable>
+                  ) : null}
                   {ride.status === 'accepted' ? (
                     <Pressable
                       style={[styles.completeRow, actingId === ride.id && { opacity: 0.55 }]}
@@ -405,6 +435,17 @@ const styles = StyleSheet.create({
   drvName: { fontSize: 14, fontWeight: '600', color: C.text },
   drvVeh: { fontSize: 12, color: C.muted, marginTop: 2 },
   riderHint: { fontSize: 12, color: C.muted, marginTop: 10 },
+  cancelReqRow: {
+    marginTop: 14,
+    alignSelf: 'flex-start',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,80,80,0.45)',
+    backgroundColor: 'rgba(255,80,80,0.08)',
+  },
+  cancelReqTxt: { fontSize: 13, fontWeight: '700', color: '#ff8a80' },
   impactHint: { fontSize: 12, color: C.brand, marginTop: 8, fontWeight: '600' },
   completeRow: {
     flexDirection: 'row',

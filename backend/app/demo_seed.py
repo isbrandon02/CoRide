@@ -6,16 +6,20 @@ import json
 import logging
 from pathlib import Path
 
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.models import User, UserProfile, UserVehicle
+from app.models import Ride, User, UserProfile, UserVehicle
 from app.security import get_password_hash
 
 logger = logging.getLogger(__name__)
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 DATA_PATH = BACKEND_ROOT / "data" / "demo_accounts.json"
+RIDES_PATH = BACKEND_ROOT / "data" / "demo_rides.json"
 
 
 def seed_demo_accounts() -> tuple[int, int]:
@@ -115,3 +119,78 @@ def _hobbies_with_meta(row: dict) -> str:
     if prefix:
         return prefix
     return base
+
+
+def seed_demo_rides() -> tuple[int, int]:
+    """
+    Insert demo rides from data/demo_rides.json when the rides table is empty.
+    Skips rows if requester or driver email is missing from the DB.
+    Returns (inserted_count, 0).
+    """
+    if not RIDES_PATH.is_file():
+        logger.debug("Demo rides seed skipped: missing %s", RIDES_PATH)
+        return (0, 0)
+
+    with open(RIDES_PATH, encoding="utf-8") as f:
+        payload = json.load(f)
+
+    spec = payload.get("rides") or []
+    if not spec:
+        return (0, 0)
+
+    db: Session = SessionLocal()
+    created = 0
+    try:
+        existing = db.scalar(select(func.count()).select_from(Ride)) or 0
+        if existing > 0:
+            logger.debug("Demo rides seed skipped: rides table already has %s row(s)", existing)
+            return (0, 0)
+
+        users_list = db.query(User).all()
+        users = {u.email.strip().lower(): u for u in users_list}
+        now = datetime.now(timezone.utc)
+
+        for row in spec:
+            re = row["requester_email"].strip().lower()
+            de = row["driver_email"].strip().lower()
+            ur = users.get(re)
+            ud = users.get(de)
+            if ur is None or ud is None:
+                logger.warning("Demo ride skipped: unknown user(s) %s / %s", re, de)
+                continue
+
+            st = (row.get("status") or "").strip().lower()
+            if st not in {"pending", "accepted", "declined", "cancelled", "completed"}:
+                logger.warning("Demo ride skipped: invalid status %s", st)
+                continue
+
+            created_days = int(row.get("created_days_ago", 0))
+            created_at = now - timedelta(days=created_days)
+
+            rid = Ride(
+                requester_id=ur.id,
+                driver_id=ud.id,
+                status=st,
+                note=(row.get("note") or "").strip(),
+                created_at=created_at,
+            )
+            if st == "completed":
+                comp_days = int(row.get("completed_days_ago", created_days))
+                rid.completed_at = now - timedelta(days=comp_days)
+                rid.saved_usd = float(row.get("saved_usd", 4.5))
+                rid.co2_kg = float(row.get("co2_kg", 2.3))
+
+            db.add(rid)
+            created += 1
+
+        if created:
+            db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+    if created:
+        logger.info("Demo rides: %s row(s) inserted", created)
+    return (created, 0)
