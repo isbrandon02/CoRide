@@ -13,7 +13,7 @@ import {
 import AppPressable from '../components/AppPressable';
 import { saveOnboarding } from '../src/auth';
 
-const accent = '#0D9488';
+const accent = '#00c896';
 
 export default function OnboardingScreen({ accessToken, onComplete, onSignOut }) {
   const [homeAddress, setHomeAddress] = useState('');
@@ -228,7 +228,8 @@ export default function OnboardingScreen({ accessToken, onComplete, onSignOut })
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
+  /* Light sheet so copy stays readable when App auth shell uses dark (signed-out) background */
+  flex: { flex: 1, backgroundColor: '#F1F5F9' },
   scroll: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 40 },
   header: { marginBottom: 20 },
   logo: {

@@ -100,8 +100,8 @@ export default function App() {
   if (!ready) {
     return (
       <SafeAreaProvider>
-        <View style={styles.boot}>
-          <ActivityIndicator size="large" color="#0D9488" />
+        <View style={[styles.boot, styles.bootDark]}>
+          <ActivityIndicator size="large" color="#00c896" />
         </View>
       </SafeAreaProvider>
     );
@@ -111,8 +111,8 @@ export default function App() {
   const signedIn = Boolean(token && needsOnboarding === false);
 
   const main = showBootAfterLogin ? (
-    <View style={styles.boot}>
-      <ActivityIndicator size="large" color="#0D9488" />
+    <View style={[styles.boot, styles.bootDark]}>
+      <ActivityIndicator size="large" color="#00c896" />
     </View>
   ) : token && needsOnboarding ? (
     <OnboardingScreen
@@ -139,7 +139,7 @@ export default function App() {
         <View style={[styles.root, styles.rootDark, styles.fill]}>{main}</View>
       ) : (
         <SafeAreaView style={[styles.root, styles.rootAuth, styles.fill]} edges={['top', 'bottom']}>
-          <StatusBar style="dark" />
+          <StatusBar style="light" />
           {main}
         </SafeAreaView>
       )}
@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9',
   },
   rootAuth: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#0a0a0f',
   },
   rootDark: {
     backgroundColor: '#0a0a0f',
@@ -175,5 +175,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#F1F5F9',
+  },
+  bootDark: {
+    backgroundColor: '#0a0a0f',
   },
 });
